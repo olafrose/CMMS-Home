@@ -29,46 +29,46 @@ export default function NewAssetPage() {
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/assets" className="text-blue-600 text-sm">‹ Back</Link>
-        <h1 className="text-2xl font-bold text-slate-800">New Asset</h1>
+        <Link href="/assets" className="text-blue-500 text-sm">‹ Back</Link>
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">New Asset</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name *</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Washing Machine"
-            className="w-full border border-slate-300 rounded-xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="field"
             autoFocus
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
           <input
             type="text"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             placeholder="e.g. Appliance, HVAC, Vehicle"
-            className="w-full border border-slate-300 rounded-xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="field"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Location</label>
           <input
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
             placeholder="e.g. Basement, Garage"
-            className="w-full border border-slate-300 rounded-xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="field"
           />
         </div>
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && <p className="text-red-500 text-sm">{error}</p>}
 
         <button
           type="submit"

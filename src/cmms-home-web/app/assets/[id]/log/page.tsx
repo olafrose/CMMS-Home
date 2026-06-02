@@ -6,10 +6,10 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 
 const EVENT_TYPES = [
-  { value: 'maintenance', label: '🔩 Maintenance', color: 'border-blue-400 bg-blue-50 text-blue-700' },
-  { value: 'cleaning', label: '🧹 Cleaning', color: 'border-teal-400 bg-teal-50 text-teal-700' },
-  { value: 'repair', label: '🛠 Repair', color: 'border-red-400 bg-red-50 text-red-700' },
-  { value: 'replacement', label: '🔄 Replacement', color: 'border-purple-400 bg-purple-50 text-purple-700' },
+  { value: 'maintenance', label: '🔩 Maintenance', active: 'border-blue-400 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' },
+  { value: 'cleaning',    label: '🧹 Cleaning',    active: 'border-teal-400 bg-teal-50 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300' },
+  { value: 'repair',      label: '🛠 Repair',      active: 'border-red-400 bg-red-50 dark:bg-red-900/40 text-red-700 dark:text-red-300' },
+  { value: 'replacement', label: '🔄 Replacement', active: 'border-purple-400 bg-purple-50 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' },
 ]
 
 export default function LogMaintenancePage() {
@@ -32,18 +32,19 @@ export default function LogMaintenancePage() {
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-5">
       <div className="flex items-center gap-3">
-        <Link href={`/assets/${id}`} className="text-blue-600 text-sm">‹ Back</Link>
-        <h1 className="text-2xl font-bold text-slate-800">Log Maintenance</h1>
+        <Link href={`/assets/${id}`} className="text-blue-500 text-sm">‹ Back</Link>
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Log Maintenance</h1>
       </div>
 
-      {/* Type picker */}
       <div className="grid grid-cols-2 gap-3">
         {EVENT_TYPES.map((t) => (
           <button
             key={t.value}
             onClick={() => setType(t.value)}
             className={`border-2 rounded-xl py-4 text-sm font-semibold transition-all ${
-              type === t.value ? t.color + ' border-current' : 'border-slate-200 bg-white text-slate-600'
+              type === t.value
+                ? t.active + ' border-current'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'
             }`}
           >
             {t.label}
@@ -51,15 +52,14 @@ export default function LogMaintenancePage() {
         ))}
       </div>
 
-      {/* Optional note */}
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Note (optional)</label>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Note (optional)</label>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={3}
           placeholder="What did you do?"
-          className="w-full border border-slate-300 rounded-xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          className="field resize-none"
         />
       </div>
 

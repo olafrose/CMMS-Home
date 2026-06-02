@@ -67,22 +67,22 @@ export default function DashboardPage() {
 
       <div className="px-4 space-y-5">
 
-        {/* Overdue / Due — high priority */}
+        {/* Overdue / Due */}
         {!loading && overdue.length > 0 && (
           <section>
-            <h2 className="text-xs font-bold text-red-600 uppercase tracking-widest mb-2">Action required</h2>
+            <h2 className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-widest mb-2">Action required</h2>
             <ul className="space-y-2">
               {overdue.map((r) => (
                 <li key={r.id}>
                   <Link
                     href={`/assets/${r.assetId}/log`}
-                    className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-4 py-3"
+                    className="flex items-center justify-between bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3"
                   >
                     <div>
-                      <p className="font-semibold text-slate-800">{assets[r.assetId]?.name ?? '…'}</p>
-                      <p className="text-xs text-red-600 font-medium">{dueLabel(r)}</p>
+                      <p className="font-semibold text-slate-800 dark:text-slate-100">{assets[r.assetId]?.name ?? '…'}</p>
+                      <p className="text-xs text-red-600 dark:text-red-400 font-medium">{dueLabel(r)}</p>
                     </div>
-                    <span className="text-sm text-red-500 font-bold">Log →</span>
+                    <span className="text-sm text-red-500 dark:text-red-400 font-bold">Log →</span>
                   </Link>
                 </li>
               ))}
@@ -93,19 +93,19 @@ export default function DashboardPage() {
         {/* Upcoming */}
         {!loading && upcoming.length > 0 && (
           <section>
-            <h2 className="text-xs font-bold text-amber-600 uppercase tracking-widest mb-2">Upcoming</h2>
+            <h2 className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">Upcoming</h2>
             <ul className="space-y-2">
               {upcoming.map((r) => (
                 <li key={r.id}>
                   <Link
                     href={`/assets/${r.assetId}`}
-                    className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3"
+                    className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3"
                   >
                     <div>
-                      <p className="font-medium text-slate-800">{assets[r.assetId]?.name ?? '…'}</p>
-                      <p className="text-xs text-amber-700">{dueLabel(r)}</p>
+                      <p className="font-medium text-slate-800 dark:text-slate-100">{assets[r.assetId]?.name ?? '…'}</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">{dueLabel(r)}</p>
                     </div>
-                    <span className="text-slate-400 text-lg">›</span>
+                    <span className="text-slate-400 dark:text-slate-500 text-lg">›</span>
                   </Link>
                 </li>
               ))}
@@ -117,10 +117,10 @@ export default function DashboardPage() {
         {!loading && overdue.length === 0 && upcoming.length === 0 && (
           <div className="text-center py-10 text-slate-400">
             <p className="text-4xl mb-2">✅</p>
-            <p className="font-medium text-slate-600">All caught up!</p>
+            <p className="font-medium text-slate-600 dark:text-slate-300">All caught up!</p>
             {rules.length === 0 && (
               <p className="text-sm mt-1">
-                <Link href="/assets/new" className="text-blue-600 underline">Add an asset</Link> to start tracking.
+                <Link href="/assets/new" className="text-blue-500 underline">Add an asset</Link> to start tracking.
               </p>
             )}
           </div>
@@ -129,19 +129,19 @@ export default function DashboardPage() {
         {/* Recent activity */}
         {!loading && events.length > 0 && (
           <section>
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Recent activity</h2>
+            <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Recent activity</h2>
             <ul className="space-y-2">
               {events.map((e) => (
                 <li key={e.id}>
                   <Link
                     href={`/assets/${e.assetId}`}
-                    className="flex items-center justify-between bg-white rounded-xl px-4 py-3 shadow-sm border border-slate-100"
+                    className="flex items-center justify-between bg-white dark:bg-slate-800 rounded-xl px-4 py-3 shadow-sm border border-slate-100 dark:border-slate-700"
                   >
                     <div>
-                      <p className="font-medium text-slate-800">{assets[e.assetId]?.name ?? '…'}</p>
-                      <p className="text-xs text-slate-500 capitalize">{e.type}</p>
+                      <p className="font-medium text-slate-800 dark:text-slate-100">{assets[e.assetId]?.name ?? '…'}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{e.type}</p>
                     </div>
-                    <span className="text-xs text-slate-400">{formatDate(e.createdAt)}</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">{formatDate(e.createdAt)}</span>
                   </Link>
                 </li>
               ))}
