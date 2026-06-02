@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CmmsHome.Api/CmmsHome.Api.csproj" />
+  </Folder>
+</Solution>
