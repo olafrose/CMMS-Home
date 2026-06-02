@@ -34,6 +34,7 @@ public static class EventEndpoints
             if (!await db.Assets.AnyAsync(a => a.Id == dto.AssetId))
                 return Results.NotFound();
 
+            var now = DateTime.UtcNow;
             var evt = new MaintenanceEvent
             {
                 Id = Guid.NewGuid(),
@@ -41,9 +42,15 @@ public static class EventEndpoints
                 Type = dto.Type,
                 Note = dto.Note,
                 PhotoUrl = dto.PhotoUrl,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = now
             };
             db.Events.Add(evt);
+
+            // Reset the maintenance countdown for all rules on this asset
+            await db.Rules
+                .Where(r => r.AssetId == dto.AssetId)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastDoneAt, now));
+
             await db.SaveChangesAsync();
             return Results.Created($"/events/{evt.Id}", evt);
         });
