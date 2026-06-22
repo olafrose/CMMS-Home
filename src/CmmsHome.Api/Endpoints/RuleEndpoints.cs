@@ -27,6 +27,7 @@ public static class RuleEndpoints
             {
                 Id = Guid.NewGuid(),
                 AssetId = dto.AssetId,
+                Name = dto.Name,
                 IntervalDays = dto.IntervalDays,
                 LastDoneAt = dto.LastDoneAt
             };
@@ -40,6 +41,7 @@ public static class RuleEndpoints
             var rule = await db.Rules.FindAsync(id);
             if (rule is null) return Results.NotFound();
 
+            if (dto.Name is not null) rule.Name = dto.Name;
             if (dto.IntervalDays.HasValue) rule.IntervalDays = dto.IntervalDays.Value;
             if (dto.LastDoneAt.HasValue) rule.LastDoneAt = dto.LastDoneAt.Value;
             await db.SaveChangesAsync();
@@ -57,5 +59,5 @@ public static class RuleEndpoints
     }
 }
 
-record CreateRuleDto(Guid AssetId, int IntervalDays, DateTime? LastDoneAt);
-record UpdateRuleDto(int? IntervalDays, DateTime? LastDoneAt);
+record CreateRuleDto(Guid AssetId, string? Name, int IntervalDays, DateTime? LastDoneAt);
+record UpdateRuleDto(string? Name, int? IntervalDays, DateTime? LastDoneAt);

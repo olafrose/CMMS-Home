@@ -4,6 +4,7 @@ public class MaintenanceRule
 {
     public Guid Id { get; set; }
     public Guid AssetId { get; set; }
+    public string? Name { get; set; }
     public int IntervalDays { get; set; }
     public DateTime? LastDoneAt { get; set; }
 

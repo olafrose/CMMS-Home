@@ -43,12 +43,14 @@ export default function AssetDetailPage() {
 
   // Add-rule form
   const [showAddForm, setShowAddForm] = useState(false)
+  const [addName, setAddName] = useState('')
   const [addDays, setAddDays] = useState('')
   const [addLastDone, setAddLastDone] = useState('')
   const [savingAdd, setSavingAdd] = useState(false)
 
   // Edit-rule form
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
   const [editDays, setEditDays] = useState('')
   const [editLastDone, setEditLastDone] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
@@ -70,10 +72,12 @@ export default function AssetDetailPage() {
     try {
       const rule = await api.rules.create({
         assetId: id,
+        name: addName || undefined,
         intervalDays: days,
         lastDoneAt: addLastDone ? new Date(addLastDone).toISOString() : undefined,
       })
       setRules((prev) => [...prev, rule])
+      setAddName('')
       setAddDays('')
       setAddLastDone('')
       setShowAddForm(false)
@@ -84,6 +88,7 @@ export default function AssetDetailPage() {
 
   function startEdit(rule: MaintenanceRule) {
     setEditingId(rule.id)
+    setEditName(rule.name ?? '')
     setEditDays(String(rule.intervalDays))
     setEditLastDone(toDateInput(rule.lastDoneAt))
   }
@@ -95,6 +100,7 @@ export default function AssetDetailPage() {
     setSavingEdit(true)
     try {
       const updated = await api.rules.update(ruleId, {
+        name: editName || undefined,
         intervalDays: days,
         lastDoneAt: editLastDone ? new Date(editLastDone).toISOString() : undefined,
       })
@@ -161,9 +167,14 @@ export default function AssetDetailPage() {
         {showAddForm && (
           <form onSubmit={handleAddRule} className={`${card} border-blue-200 dark:border-blue-800 px-4 py-4 space-y-3 mb-3`}>
             <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Name (optional)</label>
+              <input type="text" value={addName} onChange={(e) => setAddName(e.target.value)}
+                placeholder="e.g. Replace filter" className="field" autoFocus />
+            </div>
+            <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Repeat every (days) *</label>
               <input type="number" min="1" value={addDays} onChange={(e) => setAddDays(e.target.value)}
-                placeholder="e.g. 90" className="field" autoFocus />
+                placeholder="e.g. 90" className="field" />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Last done (optional)</label>
@@ -188,9 +199,14 @@ export default function AssetDetailPage() {
                 <form onSubmit={(e) => handleSaveEdit(e, r.id)}
                   className={`${card} border-blue-200 dark:border-blue-800 px-4 py-4 space-y-3`}>
                   <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Name (optional)</label>
+                    <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                      placeholder="e.g. Replace filter" className="field" autoFocus />
+                  </div>
+                  <div>
                     <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Repeat every (days) *</label>
                     <input type="number" min="1" value={editDays} onChange={(e) => setEditDays(e.target.value)}
-                      className="field" autoFocus />
+                      className="field" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Last done</label>
@@ -211,7 +227,8 @@ export default function AssetDetailPage() {
                 /* Rule row */
                 <div className={`flex items-center justify-between ${card} px-4 py-3`}>
                   <div>
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Every {r.intervalDays} days</p>
+                    {r.name && <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{r.name}</p>}
+                    <p className={r.name ? 'text-xs text-slate-500 dark:text-slate-400' : 'text-sm font-medium text-slate-700 dark:text-slate-200'}>Every {r.intervalDays} days</p>
                     {r.lastDoneAt
                       ? <p className="text-xs text-slate-400 dark:text-slate-500">Last: {formatDate(r.lastDoneAt)}</p>
                       : <p className="text-xs text-slate-400 dark:text-slate-500">Never done</p>}

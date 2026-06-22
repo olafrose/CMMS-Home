@@ -21,6 +21,7 @@ export interface MaintenanceEvent {
 export interface MaintenanceRule {
   id: string
   assetId: string
+  name?: string
   intervalDays: number
   lastDoneAt?: string
   status: MaintenanceStatus
@@ -42,11 +43,13 @@ export interface CreateEventDto {
 
 export interface CreateRuleDto {
   assetId: string
+  name?: string
   intervalDays: number
   lastDoneAt?: string
 }
 
 export interface UpdateRuleDto {
+  name?: string
   intervalDays?: number
   lastDoneAt?: string
 }
