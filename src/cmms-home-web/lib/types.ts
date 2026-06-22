@@ -1,4 +1,5 @@
 export type MaintenanceStatus = 'Ok' | 'Upcoming' | 'Due' | 'Overdue'
+export type IntervalUnit = 'Days' | 'Weeks' | 'Months' | 'Years'
 
 export interface Asset {
   id: string
@@ -22,7 +23,8 @@ export interface MaintenanceRule {
   id: string
   assetId: string
   name?: string
-  intervalDays: number
+  intervalValue: number
+  intervalUnit: IntervalUnit
   lastDoneAt?: string
   status: MaintenanceStatus
 }
@@ -44,12 +46,14 @@ export interface CreateEventDto {
 export interface CreateRuleDto {
   assetId: string
   name?: string
-  intervalDays: number
+  intervalValue: number
+  intervalUnit: IntervalUnit
   lastDoneAt?: string
 }
 
 export interface UpdateRuleDto {
   name?: string
-  intervalDays?: number
+  intervalValue?: number
+  intervalUnit?: IntervalUnit
   lastDoneAt?: string
 }

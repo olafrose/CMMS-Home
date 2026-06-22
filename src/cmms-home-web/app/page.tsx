@@ -5,10 +5,18 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { Asset, MaintenanceEvent, MaintenanceRule } from '@/lib/types'
 
+function addInterval(date: Date, value: number, unit: MaintenanceRule['intervalUnit']): Date {
+  const d = new Date(date)
+  if (unit === 'Weeks')  d.setDate(d.getDate() + value * 7)
+  else if (unit === 'Months') d.setMonth(d.getMonth() + value)
+  else if (unit === 'Years')  d.setFullYear(d.getFullYear() + value)
+  else d.setDate(d.getDate() + value)
+  return d
+}
+
 function daysRelative(rule: MaintenanceRule): number {
   if (!rule.lastDoneAt) return -Infinity
-  const due = new Date(rule.lastDoneAt)
-  due.setDate(due.getDate() + rule.intervalDays)
+  const due = addInterval(new Date(rule.lastDoneAt), rule.intervalValue, rule.intervalUnit)
   return Math.round((due.getTime() - Date.now()) / 86_400_000)
 }
 

@@ -5,7 +5,14 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '@/lib/api'
-import type { Asset, MaintenanceEvent, MaintenanceRule, MaintenanceStatus } from '@/lib/types'
+import type { Asset, IntervalUnit, MaintenanceEvent, MaintenanceRule, MaintenanceStatus } from '@/lib/types'
+
+const INTERVAL_UNITS: IntervalUnit[] = ['Days', 'Weeks', 'Months', 'Years']
+
+function intervalLabel(value: number, unit: IntervalUnit): string {
+  const u = unit.toLowerCase()
+  return `Every ${value} ${value === 1 ? u.replace(/s$/, '') : u}`
+}
 
 const statusColor: Record<MaintenanceStatus, string> = {
   Overdue: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
@@ -44,14 +51,16 @@ export default function AssetDetailPage() {
   // Add-rule form
   const [showAddForm, setShowAddForm] = useState(false)
   const [addName, setAddName] = useState('')
-  const [addDays, setAddDays] = useState('')
+  const [addValue, setAddValue] = useState('')
+  const [addUnit, setAddUnit] = useState<IntervalUnit>('Months')
   const [addLastDone, setAddLastDone] = useState('')
   const [savingAdd, setSavingAdd] = useState(false)
 
   // Edit-rule form
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
-  const [editDays, setEditDays] = useState('')
+  const [editValue, setEditValue] = useState('')
+  const [editUnit, setEditUnit] = useState<IntervalUnit>('Months')
   const [editLastDone, setEditLastDone] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
 
@@ -66,19 +75,21 @@ export default function AssetDetailPage() {
 
   async function handleAddRule(e: React.FormEvent) {
     e.preventDefault()
-    const days = parseInt(addDays)
-    if (!days || days < 1) return
+    const value = parseInt(addValue)
+    if (!value || value < 1) return
     setSavingAdd(true)
     try {
       const rule = await api.rules.create({
         assetId: id,
         name: addName || undefined,
-        intervalDays: days,
+        intervalValue: value,
+        intervalUnit: addUnit,
         lastDoneAt: addLastDone ? new Date(addLastDone).toISOString() : undefined,
       })
       setRules((prev) => [...prev, rule])
       setAddName('')
-      setAddDays('')
+      setAddValue('')
+      setAddUnit('Months')
       setAddLastDone('')
       setShowAddForm(false)
     } finally {
@@ -89,19 +100,21 @@ export default function AssetDetailPage() {
   function startEdit(rule: MaintenanceRule) {
     setEditingId(rule.id)
     setEditName(rule.name ?? '')
-    setEditDays(String(rule.intervalDays))
+    setEditValue(String(rule.intervalValue))
+    setEditUnit(rule.intervalUnit)
     setEditLastDone(toDateInput(rule.lastDoneAt))
   }
 
   async function handleSaveEdit(e: React.FormEvent, ruleId: string) {
     e.preventDefault()
-    const days = parseInt(editDays)
-    if (!days || days < 1) return
+    const value = parseInt(editValue)
+    if (!value || value < 1) return
     setSavingEdit(true)
     try {
       const updated = await api.rules.update(ruleId, {
         name: editName || undefined,
-        intervalDays: days,
+        intervalValue: value,
+        intervalUnit: editUnit,
         lastDoneAt: editLastDone ? new Date(editLastDone).toISOString() : undefined,
       })
       setRules((prev) => prev.map((r) => r.id === ruleId ? updated : r))
@@ -172,15 +185,20 @@ export default function AssetDetailPage() {
                 placeholder="e.g. Replace filter" className="field" autoFocus />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Repeat every (days) *</label>
-              <input type="number" min="1" value={addDays} onChange={(e) => setAddDays(e.target.value)}
-                placeholder="e.g. 90" className="field" />
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Repeat every *</label>
+              <div className="flex gap-2">
+                <input type="number" min="1" value={addValue} onChange={(e) => setAddValue(e.target.value)}
+                  placeholder="e.g. 3" className="field w-24 flex-shrink-0" />
+                <select value={addUnit} onChange={(e) => setAddUnit(e.target.value as IntervalUnit)} className="field">
+                  {INTERVAL_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Last done (optional)</label>
               <input type="date" value={addLastDone} onChange={(e) => setAddLastDone(e.target.value)} className="field" />
             </div>
-            <button type="submit" disabled={savingAdd || !addDays}
+            <button type="submit" disabled={savingAdd || !addValue}
               className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg disabled:opacity-50">
               {savingAdd ? 'Saving…' : 'Save Schedule'}
             </button>
@@ -204,16 +222,21 @@ export default function AssetDetailPage() {
                       placeholder="e.g. Replace filter" className="field" autoFocus />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Repeat every (days) *</label>
-                    <input type="number" min="1" value={editDays} onChange={(e) => setEditDays(e.target.value)}
-                      className="field" />
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Repeat every *</label>
+                    <div className="flex gap-2">
+                      <input type="number" min="1" value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                        className="field w-24 flex-shrink-0" />
+                      <select value={editUnit} onChange={(e) => setEditUnit(e.target.value as IntervalUnit)} className="field">
+                        {INTERVAL_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Last done</label>
                     <input type="date" value={editLastDone} onChange={(e) => setEditLastDone(e.target.value)} className="field" />
                   </div>
                   <div className="flex gap-2">
-                    <button type="submit" disabled={savingEdit || !editDays}
+                    <button type="submit" disabled={savingEdit || !editValue}
                       className="flex-1 bg-blue-600 text-white font-semibold py-2 rounded-lg disabled:opacity-50">
                       {savingEdit ? 'Saving…' : 'Save'}
                     </button>
@@ -228,7 +251,7 @@ export default function AssetDetailPage() {
                 <div className={`flex items-center justify-between ${card} px-4 py-3`}>
                   <div>
                     {r.name && <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{r.name}</p>}
-                    <p className={r.name ? 'text-xs text-slate-500 dark:text-slate-400' : 'text-sm font-medium text-slate-700 dark:text-slate-200'}>Every {r.intervalDays} days</p>
+                    <p className={r.name ? 'text-xs text-slate-500 dark:text-slate-400' : 'text-sm font-medium text-slate-700 dark:text-slate-200'}>{intervalLabel(r.intervalValue, r.intervalUnit)}</p>
                     {r.lastDoneAt
                       ? <p className="text-xs text-slate-400 dark:text-slate-500">Last: {formatDate(r.lastDoneAt)}</p>
                       : <p className="text-xs text-slate-400 dark:text-slate-500">Never done</p>}

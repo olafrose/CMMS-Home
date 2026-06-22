@@ -30,5 +30,9 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .WithOne(r => r.Asset)
             .HasForeignKey(r => r.AssetId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MaintenanceRule>()
+            .Property(r => r.IntervalUnit)
+            .HasDefaultValue(IntervalUnit.Days);
     }
 }
