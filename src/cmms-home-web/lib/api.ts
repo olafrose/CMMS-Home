@@ -40,5 +40,7 @@ export const api = {
       request<MaintenanceRule>('/rules', { method: 'POST', body: JSON.stringify(dto) }),
     update: (id: string, dto: UpdateRuleDto) =>
       request<MaintenanceRule>(`/rules/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
+    delete: (id: string) =>
+      request<void>(`/rules/${id}`, { method: 'DELETE' }),
   },
 }

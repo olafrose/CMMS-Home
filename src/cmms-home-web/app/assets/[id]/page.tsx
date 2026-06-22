@@ -25,6 +25,11 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+function toDateInput(iso?: string) {
+  if (!iso) return ''
+  return new Date(iso).toISOString().slice(0, 10)
+}
+
 const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700'
 
 export default function AssetDetailPage() {
@@ -36,10 +41,18 @@ export default function AssetDetailPage() {
   const [origin, setOrigin] = useState('')
   const [loading, setLoading] = useState(true)
 
-  const [showRuleForm, setShowRuleForm] = useState(false)
-  const [intervalDays, setIntervalDays] = useState('')
-  const [lastDoneAt, setLastDoneAt] = useState('')
-  const [savingRule, setSavingRule] = useState(false)
+  // Add-rule form
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [addDays, setAddDays] = useState('')
+  const [addLastDone, setAddLastDone] = useState('')
+  const [savingAdd, setSavingAdd] = useState(false)
+
+  // Edit-rule form
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDays, setEditDays] = useState('')
+  const [editLastDone, setEditLastDone] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
@@ -51,25 +64,53 @@ export default function AssetDetailPage() {
 
   async function handleAddRule(e: React.FormEvent) {
     e.preventDefault()
-    const days = parseInt(intervalDays)
+    const days = parseInt(addDays)
     if (!days || days < 1) return
-    setSavingRule(true)
+    setSavingAdd(true)
     try {
       const rule = await api.rules.create({
         assetId: id,
         intervalDays: days,
-        lastDoneAt: lastDoneAt ? new Date(lastDoneAt).toISOString() : undefined,
+        lastDoneAt: addLastDone ? new Date(addLastDone).toISOString() : undefined,
       })
       setRules((prev) => [...prev, rule])
-      setIntervalDays('')
-      setLastDoneAt('')
-      setShowRuleForm(false)
+      setAddDays('')
+      setAddLastDone('')
+      setShowAddForm(false)
     } finally {
-      setSavingRule(false)
+      setSavingAdd(false)
     }
   }
 
-  async function handleDelete() {
+  function startEdit(rule: MaintenanceRule) {
+    setEditingId(rule.id)
+    setEditDays(String(rule.intervalDays))
+    setEditLastDone(toDateInput(rule.lastDoneAt))
+  }
+
+  async function handleSaveEdit(e: React.FormEvent, ruleId: string) {
+    e.preventDefault()
+    const days = parseInt(editDays)
+    if (!days || days < 1) return
+    setSavingEdit(true)
+    try {
+      const updated = await api.rules.update(ruleId, {
+        intervalDays: days,
+        lastDoneAt: editLastDone ? new Date(editLastDone).toISOString() : undefined,
+      })
+      setRules((prev) => prev.map((r) => r.id === ruleId ? updated : r))
+      setEditingId(null)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  async function handleDeleteRule(ruleId: string) {
+    await api.rules.delete(ruleId)
+    setRules((prev) => prev.filter((r) => r.id !== ruleId))
+  }
+
+  async function handleDeleteAsset() {
     if (!window.confirm(`Delete "${asset?.name}" and all its history? This cannot be undone.`)) return
     setDeleting(true)
     try {
@@ -111,58 +152,83 @@ export default function AssetDetailPage() {
       <section>
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Maintenance Schedule</h2>
-          <button onClick={() => setShowRuleForm((v) => !v)} className="text-sm text-blue-500 font-medium">
-            {showRuleForm ? 'Cancel' : '+ Add'}
+          <button onClick={() => { setShowAddForm((v) => !v); setEditingId(null) }} className="text-sm text-blue-500 font-medium">
+            {showAddForm ? 'Cancel' : '+ Add'}
           </button>
         </div>
 
-        {showRuleForm && (
+        {/* Add form */}
+        {showAddForm && (
           <form onSubmit={handleAddRule} className={`${card} border-blue-200 dark:border-blue-800 px-4 py-4 space-y-3 mb-3`}>
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Repeat every (days) *</label>
-              <input
-                type="number"
-                min="1"
-                value={intervalDays}
-                onChange={(e) => setIntervalDays(e.target.value)}
-                placeholder="e.g. 90"
-                className="field"
-                autoFocus
-              />
+              <input type="number" min="1" value={addDays} onChange={(e) => setAddDays(e.target.value)}
+                placeholder="e.g. 90" className="field" autoFocus />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Last done (optional)</label>
-              <input
-                type="date"
-                value={lastDoneAt}
-                onChange={(e) => setLastDoneAt(e.target.value)}
-                className="field"
-              />
+              <input type="date" value={addLastDone} onChange={(e) => setAddLastDone(e.target.value)} className="field" />
             </div>
-            <button
-              type="submit"
-              disabled={savingRule || !intervalDays}
-              className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg disabled:opacity-50"
-            >
-              {savingRule ? 'Saving…' : 'Save Schedule'}
+            <button type="submit" disabled={savingAdd || !addDays}
+              className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg disabled:opacity-50">
+              {savingAdd ? 'Saving…' : 'Save Schedule'}
             </button>
           </form>
         )}
 
-        {rules.length === 0 && !showRuleForm && (
+        {rules.length === 0 && !showAddForm && (
           <p className="text-sm text-slate-400 dark:text-slate-500">No schedule yet. Tap + Add to create one.</p>
         )}
 
         <ul className="space-y-2">
           {rules.map((r) => (
-            <li key={r.id} className={`flex items-center justify-between ${card} px-4 py-3`}>
-              <div>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Every {r.intervalDays} days</p>
-                {r.lastDoneAt && <p className="text-xs text-slate-400 dark:text-slate-500">Last: {formatDate(r.lastDoneAt)}</p>}
-              </div>
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>
-                {r.status}
-              </span>
+            <li key={r.id}>
+              {editingId === r.id ? (
+                /* Inline edit form */
+                <form onSubmit={(e) => handleSaveEdit(e, r.id)}
+                  className={`${card} border-blue-200 dark:border-blue-800 px-4 py-4 space-y-3`}>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Repeat every (days) *</label>
+                    <input type="number" min="1" value={editDays} onChange={(e) => setEditDays(e.target.value)}
+                      className="field" autoFocus />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Last done</label>
+                    <input type="date" value={editLastDone} onChange={(e) => setEditLastDone(e.target.value)} className="field" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="submit" disabled={savingEdit || !editDays}
+                      className="flex-1 bg-blue-600 text-white font-semibold py-2 rounded-lg disabled:opacity-50">
+                      {savingEdit ? 'Saving…' : 'Save'}
+                    </button>
+                    <button type="button" onClick={() => setEditingId(null)}
+                      className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-medium py-2 rounded-lg">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Rule row */
+                <div className={`flex items-center justify-between ${card} px-4 py-3`}>
+                  <div>
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Every {r.intervalDays} days</p>
+                    {r.lastDoneAt
+                      ? <p className="text-xs text-slate-400 dark:text-slate-500">Last: {formatDate(r.lastDoneAt)}</p>
+                      : <p className="text-xs text-slate-400 dark:text-slate-500">Never done</p>}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>
+                      {r.status}
+                    </span>
+                    <button onClick={() => startEdit(r)}
+                      className="text-slate-400 dark:text-slate-500 hover:text-blue-500 text-lg leading-none"
+                      aria-label="Edit">✏️</button>
+                    <button onClick={() => handleDeleteRule(r.id)}
+                      className="text-slate-400 dark:text-slate-500 hover:text-red-500 text-lg leading-none"
+                      aria-label="Delete">🗑️</button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -172,7 +238,8 @@ export default function AssetDetailPage() {
       <section>
         <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">QR Code</h2>
         <div className={`${card} p-5 flex flex-col items-center gap-2`}>
-          {origin && <QRCodeSVG value={logUrl} size={160} bgColor="transparent" fgColor="currentColor" className="text-slate-900 dark:text-slate-100" />}
+          {origin && <QRCodeSVG value={logUrl} size={160} bgColor="transparent" fgColor="currentColor"
+            className="text-slate-900 dark:text-slate-100" />}
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center">Scan to log maintenance</p>
         </div>
       </section>
@@ -201,13 +268,10 @@ export default function AssetDetailPage() {
         )}
       </section>
 
-      {/* Delete */}
+      {/* Delete asset */}
       <section className="pt-2 border-t border-slate-200 dark:border-slate-700">
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="w-full text-red-600 dark:text-red-400 font-medium py-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 disabled:opacity-50"
-        >
+        <button onClick={handleDeleteAsset} disabled={deleting}
+          className="w-full text-red-600 dark:text-red-400 font-medium py-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 disabled:opacity-50">
           {deleting ? 'Deleting…' : 'Delete Asset'}
         </button>
       </section>

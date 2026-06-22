@@ -45,6 +45,15 @@ public static class RuleEndpoints
             await db.SaveChangesAsync();
             return Results.Ok(rule);
         });
+
+        group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
+        {
+            var rule = await db.Rules.FindAsync(id);
+            if (rule is null) return Results.NotFound();
+            db.Rules.Remove(rule);
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        });
     }
 }
 
