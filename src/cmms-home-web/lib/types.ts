@@ -6,10 +6,16 @@ export interface Location {
   name: string
 }
 
+export interface Category {
+  id: string
+  name: string
+}
+
 export interface Asset {
   id: string
   name: string
-  category?: string
+  categoryId?: string
+  category?: Category
   locationId?: string
   location?: Location
   imageUrl?: string
@@ -37,7 +43,7 @@ export interface MaintenanceRule {
 
 export interface CreateAssetDto {
   name: string
-  category?: string
+  categoryId?: string
   locationId?: string
   imageUrl?: string
 }

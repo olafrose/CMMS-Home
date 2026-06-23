@@ -29,5 +29,6 @@ app.MapAssetEndpoints();
 app.MapEventEndpoints();
 app.MapRuleEndpoints();
 app.MapLocationEndpoints();
+app.MapCategoryEndpoints();
 
 app.Run();

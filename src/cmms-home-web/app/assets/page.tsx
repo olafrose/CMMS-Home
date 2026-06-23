@@ -91,7 +91,7 @@ export default function AssetsPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{asset.name}</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
-                  {[asset.category, asset.location?.name].filter(Boolean).join(' · ') || 'No details'}
+                  {[asset.category?.name, asset.location?.name].filter(Boolean).join(' · ') || 'No details'}
                 </p>
               </div>
               <span className="text-slate-300 dark:text-slate-600 text-lg">›</span>

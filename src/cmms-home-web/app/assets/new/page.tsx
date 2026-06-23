@@ -4,21 +4,29 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Location } from '@/lib/types'
-import LocationCombobox from '@/components/LocationCombobox'
+import type { Category, Location } from '@/lib/types'
+import EntityCombobox from '@/components/EntityCombobox'
 
 export default function NewAssetPage() {
   const router = useRouter()
   const [name, setName] = useState('')
-  const [category, setCategory] = useState('')
+  const [categoryId, setCategoryId] = useState<string | null>(null)
   const [locationId, setLocationId] = useState<string | null>(null)
+  const [categories, setCategories] = useState<Category[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api.locations.list().then(setLocations)
+    Promise.all([api.categories.list(), api.locations.list()])
+      .then(([cats, locs]) => { setCategories(cats); setLocations(locs) })
   }, [])
+
+  async function handleCreateCategory(name: string) {
+    const cat = await api.categories.create(name)
+    setCategories((prev) => [...prev, cat].sort((a, b) => a.name.localeCompare(b.name)))
+    return cat
+  }
 
   async function handleCreateLocation(name: string) {
     const loc = await api.locations.create(name)
@@ -33,7 +41,7 @@ export default function NewAssetPage() {
     try {
       const asset = await api.assets.create({
         name: name.trim(),
-        category: category || undefined,
+        categoryId: categoryId ?? undefined,
         locationId: locationId ?? undefined,
       })
       router.push(`/assets/${asset.id}`)
@@ -65,22 +73,23 @@ export default function NewAssetPage() {
 
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
-          <input
-            type="text"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
+          <EntityCombobox
+            items={categories}
+            value={categoryId}
+            onChange={setCategoryId}
+            onCreate={handleCreateCategory}
             placeholder="e.g. Appliance, HVAC, Vehicle"
-            className="field"
           />
         </div>
 
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Location</label>
-          <LocationCombobox
-            locations={locations}
+          <EntityCombobox
+            items={locations}
             value={locationId}
             onChange={setLocationId}
-            onCreateLocation={handleCreateLocation}
+            onCreate={handleCreateLocation}
+            placeholder="e.g. Basement, Garage"
           />
         </div>
 

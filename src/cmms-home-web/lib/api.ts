@@ -1,5 +1,5 @@
 import type {
-  Asset, Location, MaintenanceEvent, MaintenanceRule,
+  Asset, Category, Location, MaintenanceEvent, MaintenanceRule,
   CreateAssetDto, CreateEventDto, CreateRuleDto, UpdateRuleDto,
 } from './types'
 
@@ -51,5 +51,14 @@ export const api = {
       request<Location>(`/locations/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
     delete: (id: string) =>
       request<void>(`/locations/${id}`, { method: 'DELETE' }),
+  },
+  categories: {
+    list: () => request<Category[]>('/categories'),
+    create: (name: string) =>
+      request<Category>('/categories', { method: 'POST', body: JSON.stringify({ name }) }),
+    update: (id: string, name: string) =>
+      request<Category>(`/categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+    delete: (id: string) =>
+      request<void>(`/categories/${id}`, { method: 'DELETE' }),
   },
 }
