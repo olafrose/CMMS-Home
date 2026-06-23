@@ -5,10 +5,45 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { Asset } from '@/lib/types'
 
+function FilterRow({ entries, active, onSelect }: {
+  entries: [string, string][]
+  active: string | null
+  onSelect: (id: string | null) => void
+}) {
+  return (
+    <div className="flex gap-2 flex-wrap">
+      <button
+        onClick={() => onSelect(null)}
+        className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+          active === null
+            ? 'bg-blue-600 text-white'
+            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+        }`}
+      >
+        All
+      </button>
+      {entries.map(([id, name]) => (
+        <button
+          key={id}
+          onClick={() => onSelect(active === id ? null : id)}
+          className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+            active === id
+              ? 'bg-blue-600 text-white'
+              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+          }`}
+        >
+          {name}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
   const [activeLocation, setActiveLocation] = useState<string | null>(null)
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
   useEffect(() => {
     api.assets.list()
@@ -24,9 +59,18 @@ export default function AssetsPage() {
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [assets])
 
-  const filtered = activeLocation
-    ? assets.filter(a => a.locationId === activeLocation)
-    : assets
+  const categories = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const a of assets) {
+      if (a.categoryId && a.category) seen.set(a.categoryId, a.category.name)
+    }
+    return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [assets])
+
+  const filtered = assets.filter(a =>
+    (!activeLocation || a.locationId === activeLocation) &&
+    (!activeCategory || a.categoryId === activeCategory)
+  )
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
@@ -40,32 +84,14 @@ export default function AssetsPage() {
         </Link>
       </div>
 
-      {/* Location filter chips */}
-      {locations.length > 0 && (
-        <div className="flex gap-2 flex-wrap mb-4">
-          <button
-            onClick={() => setActiveLocation(null)}
-            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-              activeLocation === null
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-            }`}
-          >
-            All
-          </button>
-          {locations.map(([id, name]) => (
-            <button
-              key={id}
-              onClick={() => setActiveLocation(activeLocation === id ? null : id)}
-              className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                activeLocation === id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              {name}
-            </button>
-          ))}
+      {(locations.length > 0 || categories.length > 0) && (
+        <div className="space-y-2 mb-4">
+          {categories.length > 0 && (
+            <FilterRow entries={categories} active={activeCategory} onSelect={setActiveCategory} />
+          )}
+          {locations.length > 0 && (
+            <FilterRow entries={locations} active={activeLocation} onSelect={setActiveLocation} />
+          )}
         </div>
       )}
 
