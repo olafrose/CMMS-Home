@@ -29,11 +29,9 @@ export default function NewPartPage() {
   }, [])
 
   useEffect(() => {
-    setShelves([]); setShelfId(''); setBoxId('')
+    setShelves([])
     if (locationId) api.shelves.list(locationId).then(setShelves)
   }, [locationId])
-
-  useEffect(() => { setBoxId('') }, [shelfId])
 
   const filteredBoxes = shelfId
     ? allBoxes.filter(b => b.shelfId === shelfId)
@@ -109,7 +107,7 @@ export default function NewPartPage() {
           <legend className="text-sm font-medium text-slate-700 dark:text-slate-300 px-1">Storage location</legend>
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Location</label>
-            <select value={locationId} onChange={e => setLocationId(e.target.value)} className="field">
+            <select value={locationId} onChange={e => { setLocationId(e.target.value); setShelfId(''); setBoxId('') }} className="field">
               <option value="">— none —</option>
               {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
@@ -117,7 +115,7 @@ export default function NewPartPage() {
           {shelves.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Shelf (optional)</label>
-              <select value={shelfId} onChange={e => setShelfId(e.target.value)} className="field">
+              <select value={shelfId} onChange={e => { setShelfId(e.target.value); setBoxId('') }} className="field">
                 <option value="">— none —</option>
                 {shelves.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
@@ -126,7 +124,13 @@ export default function NewPartPage() {
           {allBoxes.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Box (optional)</label>
-              <select value={boxId} onChange={e => setBoxId(e.target.value)} className="field">
+              <select value={boxId} onChange={e => {
+                const id = e.target.value; setBoxId(id)
+                if (id) {
+                  const box = allBoxes.find(b => b.id === id)
+                  if (box) { setLocationId(box.shelf?.locationId ?? box.locationId ?? ''); setShelfId(box.shelfId ?? '') }
+                }
+              }} className="field">
                 <option value="">— none —</option>
                 {filteredBoxes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
