@@ -5,9 +5,10 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { Location, Shelf, StorageBox } from '@/lib/types'
 
-function ShelfSection({ shelf, boxes, locations, onRenameShelf, onDeleteShelf, onAddBox, onRenameBox, onDeleteBox }: {
+function ShelfSection({ shelf, boxes, shelves, locations, onRenameShelf, onDeleteShelf, onAddBox, onRenameBox, onDeleteBox }: {
   shelf: Shelf
   boxes: StorageBox[]
+  shelves: Shelf[]
   locations: Location[]
   onRenameShelf: (id: string, name: string, locationId: string) => Promise<void>
   onDeleteShelf: (shelf: Shelf) => Promise<void>
@@ -22,6 +23,9 @@ function ShelfSection({ shelf, boxes, locations, onRenameShelf, onDeleteShelf, o
   const [newBoxName, setNewBoxName] = useState('')
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null)
   const [editBoxName, setEditBoxName] = useState('')
+  const [movingBoxId, setMovingBoxId] = useState<string | null>(null)
+  const [moveLocationId, setMoveLocationId] = useState('')
+  const [moveShelfId, setMoveShelfId] = useState('')
   const editRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (editingBoxId) editRef.current?.focus() }, [editingBoxId])
@@ -56,22 +60,42 @@ function ShelfSection({ shelf, boxes, locations, onRenameShelf, onDeleteShelf, o
       {expanded && (
         <div className="border-t border-slate-100 dark:border-slate-700 px-4 py-3 space-y-2 bg-slate-50 dark:bg-slate-900/30">
           {boxes.map(box => (
-            <div key={box.id} className="flex items-center gap-2">
-              {editingBoxId === box.id ? (
-                <>
-                  <input ref={editRef} type="text" value={editBoxName} onChange={e => setEditBoxName(e.target.value)}
-                    onKeyDown={async e => { if (e.key === 'Enter') { await onRenameBox(box.id, editBoxName.trim(), shelf.id); setEditingBoxId(null) } if (e.key === 'Escape') setEditingBoxId(null) }}
-                    className="field flex-1 text-sm" />
-                  <button onClick={async () => { await onRenameBox(box.id, editBoxName.trim(), shelf.id); setEditingBoxId(null) }}
-                    className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
-                  <button onClick={() => setEditingBoxId(null)} className="text-slate-400 text-sm px-1">✕</button>
-                </>
+            <div key={box.id}>
+              {movingBoxId === box.id ? (
+                <div className="space-y-2">
+                  <select value={moveLocationId} onChange={e => { setMoveLocationId(e.target.value); setMoveShelfId('') }} className="field w-full text-sm">
+                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                  <div className="flex gap-2">
+                    <select value={moveShelfId} onChange={e => setMoveShelfId(e.target.value)} className="field flex-1 text-sm">
+                      <option value="">No shelf (freestanding)</option>
+                      {shelves.filter(s => s.locationId === moveLocationId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <button onClick={async () => { await onRenameBox(box.id, box.name, moveShelfId || undefined, moveShelfId ? undefined : moveLocationId || undefined); setMovingBoxId(null) }}
+                      className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
+                    <button onClick={() => setMovingBoxId(null)} className="text-slate-400 text-sm px-1">✕</button>
+                  </div>
+                </div>
               ) : (
-                <>
-                  <span className="flex-1 text-sm text-slate-600 dark:text-slate-300">📦 {box.name}</span>
-                  <button onClick={() => { setEditingBoxId(box.id); setEditBoxName(box.name) }} className="text-slate-400 hover:text-blue-500 text-base leading-none">✏️</button>
-                  <button onClick={() => onDeleteBox(box)} className="text-slate-400 hover:text-red-500 text-base leading-none">🗑️</button>
-                </>
+                <div className="flex items-center gap-2">
+                  {editingBoxId === box.id ? (
+                    <>
+                      <input ref={editRef} type="text" value={editBoxName} onChange={e => setEditBoxName(e.target.value)}
+                        onKeyDown={async e => { if (e.key === 'Enter') { await onRenameBox(box.id, editBoxName.trim(), shelf.id); setEditingBoxId(null) } if (e.key === 'Escape') setEditingBoxId(null) }}
+                        className="field flex-1 text-sm" />
+                      <button onClick={async () => { await onRenameBox(box.id, editBoxName.trim(), shelf.id); setEditingBoxId(null) }}
+                        className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
+                      <button onClick={() => setEditingBoxId(null)} className="text-slate-400 text-sm px-1">✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm text-slate-600 dark:text-slate-300">📦 {box.name}</span>
+                      <button onClick={() => { setMovingBoxId(box.id); setMoveLocationId(shelf.locationId); setMoveShelfId(shelf.id) }} className="text-slate-400 hover:text-amber-500 text-base leading-none" aria-label="Move">↗️</button>
+                      <button onClick={() => { setEditingBoxId(box.id); setEditBoxName(box.name) }} className="text-slate-400 hover:text-blue-500 text-base leading-none">✏️</button>
+                      <button onClick={() => onDeleteBox(box)} className="text-slate-400 hover:text-red-500 text-base leading-none">🗑️</button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -102,6 +126,9 @@ export default function StoragePage() {
   const [addingShelf, setAddingShelf] = useState(false)
   const [editingFreeBoxId, setEditingFreeBoxId] = useState<string | null>(null)
   const [editFreeBoxName, setEditFreeBoxName] = useState('')
+  const [movingFreeBoxId, setMovingFreeBoxId] = useState<string | null>(null)
+  const [moveFreeLocationId, setMoveFreeLocationId] = useState('')
+  const [moveFreeShelfId, setMoveFreeShelfId] = useState('')
 
   useEffect(() => {
     Promise.all([api.shelves.list(), api.boxes.list(), api.locations.list()])
@@ -193,6 +220,7 @@ export default function StoragePage() {
             {shelves.map(shelf => (
               <ShelfSection key={shelf.id} shelf={shelf}
                 boxes={boxes.filter(b => b.shelfId === shelf.id)}
+                shelves={shelves}
                 locations={locations}
                 onRenameShelf={renameShelf}
                 onDeleteShelf={deleteShelf}
@@ -229,26 +257,43 @@ export default function StoragePage() {
         )}
         <ul className="space-y-2">
           {freestandingBoxes.map(box => (
-            <li key={box.id} className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm px-4 py-3">
-              {editingFreeBoxId === box.id ? (
-                <>
+            <li key={box.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm px-4 py-3">
+              {movingFreeBoxId === box.id ? (
+                <div className="space-y-2">
+                  <select value={moveFreeLocationId} onChange={e => { setMoveFreeLocationId(e.target.value); setMoveFreeShelfId('') }} className="field w-full text-sm">
+                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                  <div className="flex gap-2">
+                    <select value={moveFreeShelfId} onChange={e => setMoveFreeShelfId(e.target.value)} className="field flex-1 text-sm">
+                      <option value="">No shelf (freestanding)</option>
+                      {shelves.filter(s => s.locationId === moveFreeLocationId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <button onClick={async () => { await renameBox(box.id, box.name, moveFreeShelfId || undefined, moveFreeShelfId ? undefined : moveFreeLocationId || undefined); setMovingFreeBoxId(null) }}
+                      className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
+                    <button onClick={() => setMovingFreeBoxId(null)} className="text-slate-400 text-sm px-1">✕</button>
+                  </div>
+                </div>
+              ) : editingFreeBoxId === box.id ? (
+                <div className="flex items-center gap-3">
                   <input type="text" value={editFreeBoxName} onChange={e => setEditFreeBoxName(e.target.value)}
                     onKeyDown={async e => { if (e.key === 'Enter') { await renameBox(box.id, editFreeBoxName.trim(), undefined, box.locationId); setEditingFreeBoxId(null) } if (e.key === 'Escape') setEditingFreeBoxId(null) }}
                     className="field flex-1 text-sm" autoFocus />
                   <button onClick={async () => { await renameBox(box.id, editFreeBoxName.trim(), undefined, box.locationId); setEditingFreeBoxId(null) }}
                     className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
                   <button onClick={() => setEditingFreeBoxId(null)} className="text-slate-400 text-sm px-1">✕</button>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="flex items-center gap-3">
                   <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">
                     📦 {box.name}
                     {box.location && <span className="ml-2 text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{box.location.name}</span>}
                   </span>
+                  <button onClick={() => { setMovingFreeBoxId(box.id); setMoveFreeLocationId(box.locationId ?? locations[0]?.id ?? ''); setMoveFreeShelfId('') }}
+                    className="text-slate-400 hover:text-amber-500 text-lg leading-none" aria-label="Move">↗️</button>
                   <button onClick={() => { setEditingFreeBoxId(box.id); setEditFreeBoxName(box.name) }}
                     className="text-slate-400 hover:text-blue-500 text-lg leading-none" aria-label="Edit">✏️</button>
                   <button onClick={() => deleteBox(box)} className="text-slate-400 hover:text-red-500 text-lg leading-none">🗑️</button>
-                </>
+                </div>
               )}
             </li>
           ))}
