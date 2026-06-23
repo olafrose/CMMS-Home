@@ -29,15 +29,17 @@ function ShelfSection({ shelf, boxes, locations, onRenameShelf, onDeleteShelf, o
   return (
     <li className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
       {editingShelf ? (
-        <div className="flex gap-2 p-3">
+        <div className="space-y-2 p-3">
           <input type="text" value={shelfName} onChange={e => setShelfName(e.target.value)}
-            className="field flex-1 text-sm" autoFocus />
-          <select value={shelfLocationId} onChange={e => setShelfLocationId(e.target.value)} className="field text-sm">
-            {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
-          <button onClick={async () => { await onRenameShelf(shelf.id, shelfName.trim(), shelfLocationId); setEditingShelf(false) }}
-            className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
-          <button onClick={() => setEditingShelf(false)} className="text-slate-400 text-sm px-1">✕</button>
+            className="field w-full text-sm" autoFocus />
+          <div className="flex gap-2">
+            <select value={shelfLocationId} onChange={e => setShelfLocationId(e.target.value)} className="field flex-1 text-sm">
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+            <button onClick={async () => { await onRenameShelf(shelf.id, shelfName.trim(), shelfLocationId); setEditingShelf(false) }}
+              className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
+            <button onClick={() => setEditingShelf(false)} className="text-slate-400 text-sm px-1">✕</button>
+          </div>
         </div>
       ) : (
         <div className="flex items-center gap-2 px-4 py-3">
@@ -165,17 +167,19 @@ export default function StoragePage() {
         </p>
       )}
       {locations.length > 0 && (
-        <div className="flex gap-2 mb-6">
+        <div className="space-y-2 mb-6">
           <input type="text" value={newShelfName} onChange={e => setNewShelfName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && addShelf()}
-            placeholder="New shelf name" className="field flex-1" />
-          <select value={newShelfLocationId} onChange={e => setNewShelfLocationId(e.target.value)} className="field">
-            {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
-          <button onClick={addShelf} disabled={addingShelf || !newShelfName.trim()}
-            className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl disabled:opacity-50">
-            {addingShelf ? '…' : 'Add'}
-          </button>
+            placeholder="New shelf name" className="field w-full" />
+          <div className="flex gap-2">
+            <select value={newShelfLocationId} onChange={e => setNewShelfLocationId(e.target.value)} className="field flex-1">
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+            <button onClick={addShelf} disabled={addingShelf || !newShelfName.trim()}
+              className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl disabled:opacity-50">
+              {addingShelf ? '…' : 'Add Shelf'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -203,17 +207,19 @@ export default function StoragePage() {
       <section>
         <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Freestanding Boxes</h2>
         {locations.length > 0 && (
-          <div className="flex gap-2 mb-3">
+          <div className="space-y-2 mb-3">
             <input type="text" value={newBoxName} onChange={e => setNewBoxName(e.target.value)}
               onKeyDown={async e => { if (e.key === 'Enter' && newBoxName.trim()) { await addBox(newBoxName.trim(), undefined, newBoxLocationId); setNewBoxName('') } }}
-              placeholder="New box name" className="field flex-1" />
-            <select value={newBoxLocationId} onChange={e => setNewBoxLocationId(e.target.value)} className="field">
+              placeholder="New box name" className="field w-full" />
+            <div className="flex gap-2">
+            <select value={newBoxLocationId} onChange={e => setNewBoxLocationId(e.target.value)} className="field flex-1">
               {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
             <button onClick={async () => { if (newBoxName.trim()) { await addBox(newBoxName.trim(), undefined, newBoxLocationId); setNewBoxName('') } }}
               disabled={!newBoxName.trim()} className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl disabled:opacity-50">
-              Add
+              Add Box
             </button>
+            </div>
           </div>
         )}
         {freestandingBoxes.length === 0 && (
