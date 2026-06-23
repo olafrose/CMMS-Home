@@ -11,6 +11,44 @@ export interface Category {
   name: string
 }
 
+export interface Shelf {
+  id: string
+  name: string
+  locationId: string
+  location: Location
+}
+
+export interface StorageBox {
+  id: string
+  name: string
+  shelfId?: string
+  shelf?: Shelf
+  locationId?: string
+  location?: Location
+}
+
+export interface Part {
+  id: string
+  name: string
+  quantity: number
+  unit: string
+  minQuantity?: number
+  boxId?: string
+  box?: StorageBox
+  shelfId?: string
+  shelf?: Shelf
+  locationId?: string
+  location?: Location
+}
+
+export interface PartUsage {
+  id: string
+  maintenanceEventId: string
+  partId: string
+  part: Part
+  quantityUsed: number
+}
+
 export interface Asset {
   id: string
   name: string

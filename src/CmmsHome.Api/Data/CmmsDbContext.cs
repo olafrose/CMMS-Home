@@ -10,6 +10,10 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<MaintenanceRule> Rules => Set<MaintenanceRule>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Shelf> Shelves => Set<Shelf>();
+    public DbSet<StorageBox> Boxes => Set<StorageBox>();
+    public DbSet<Part> Parts => Set<Part>();
+    public DbSet<PartUsage> PartUsages => Set<PartUsage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,5 +52,53 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
         modelBuilder.Entity<MaintenanceRule>()
             .Property(r => r.IntervalUnit)
             .HasDefaultValue(IntervalUnit.Days);
+
+        modelBuilder.Entity<Shelf>()
+            .HasOne(s => s.Location)
+            .WithMany()
+            .HasForeignKey(s => s.LocationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<StorageBox>()
+            .HasOne(b => b.Shelf)
+            .WithMany()
+            .HasForeignKey(b => b.ShelfId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<StorageBox>()
+            .HasOne(b => b.Location)
+            .WithMany()
+            .HasForeignKey(b => b.LocationId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Part>()
+            .HasOne(p => p.Box)
+            .WithMany()
+            .HasForeignKey(p => p.BoxId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Part>()
+            .HasOne(p => p.Shelf)
+            .WithMany()
+            .HasForeignKey(p => p.ShelfId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Part>()
+            .HasOne(p => p.Location)
+            .WithMany()
+            .HasForeignKey(p => p.LocationId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PartUsage>()
+            .HasOne(u => u.MaintenanceEvent)
+            .WithMany()
+            .HasForeignKey(u => u.MaintenanceEventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PartUsage>()
+            .HasOne(u => u.Part)
+            .WithMany()
+            .HasForeignKey(u => u.PartId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

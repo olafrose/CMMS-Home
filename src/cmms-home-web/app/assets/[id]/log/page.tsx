@@ -22,8 +22,8 @@ export default function LogMaintenancePage() {
   async function handleSave() {
     setSaving(true)
     try {
-      await api.events.create({ assetId: id, type, note: note.trim() || undefined })
-      router.push(`/assets/${id}`)
+      const event = await api.events.create({ assetId: id, type, note: note.trim() || undefined })
+      router.push(`/events/${event.id}/parts?asset_id=${id}`)
     } catch {
       setSaving(false)
     }

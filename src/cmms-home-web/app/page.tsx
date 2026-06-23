@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Asset, MaintenanceEvent, MaintenanceRule } from '@/lib/types'
+import type { Asset, MaintenanceEvent, MaintenanceRule, Part } from '@/lib/types'
 
 function addInterval(date: Date, value: number, unit: MaintenanceRule['intervalUnit']): Date {
   const d = new Date(date)
@@ -36,14 +36,16 @@ export default function DashboardPage() {
   const [assets, setAssets] = useState<Record<string, Asset>>({})
   const [rules, setRules] = useState<MaintenanceRule[]>([])
   const [events, setEvents] = useState<MaintenanceEvent[]>([])
+  const [lowStockParts, setLowStockParts] = useState<Part[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([api.assets.list(), api.rules.list(), api.events.list()])
-      .then(([a, r, e]) => {
+    Promise.all([api.assets.list(), api.rules.list(), api.events.list(), api.parts.list(true)])
+      .then(([a, r, e, p]) => {
         setAssets(Object.fromEntries(a.map((x) => [x.id, x])))
         setRules(r.sort((a, b) => daysRelative(a) - daysRelative(b)))
         setEvents(e.slice(0, 5))
+        setLowStockParts(p)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -134,6 +136,31 @@ export default function DashboardPage() {
               </p>
             )}
           </div>
+        )}
+
+        {/* Low stock parts */}
+        {!loading && lowStockParts.length > 0 && (
+          <section>
+            <h2 className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">Low stock</h2>
+            <ul className="space-y-2">
+              {lowStockParts.map((p) => (
+                <li key={p.id}>
+                  <Link
+                    href={`/parts/${p.id}`}
+                    className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-800 dark:text-slate-100">{p.name}</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        {p.quantity} {p.unit} remaining (min {p.minQuantity})
+                      </p>
+                    </div>
+                    <span className="text-slate-400 dark:text-slate-500 text-lg">›</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {/* Recent activity */}

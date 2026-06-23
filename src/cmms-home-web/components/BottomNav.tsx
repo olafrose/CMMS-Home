@@ -8,12 +8,14 @@ import { useEffect, useState } from 'react'
 const tabs = [
   { href: '/', label: 'Home', icon: '🏠' },
   { href: '/assets', label: 'Assets', icon: '🔧' },
+  { href: '/parts', label: 'Parts', icon: '🔩' },
   { href: '/scan', label: 'Scan', icon: '📷' },
 ]
 
 const manageLinks = [
   { href: '/locations', label: 'Locations', icon: '📍' },
   { href: '/categories', label: 'Categories', icon: '🏷️' },
+  { href: '/storage', label: 'Storage', icon: '🗄️' },
 ]
 
 export default function BottomNav() {

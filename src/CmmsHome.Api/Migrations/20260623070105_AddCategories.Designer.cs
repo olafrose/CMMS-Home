@@ -3,6 +3,7 @@ using System;
 using CmmsHome.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CmmsHome.Api.Migrations
 {
     [DbContext(typeof(CmmsDbContext))]
-    partial class CmmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260623070105_AddCategories")]
+    partial class AddCategories
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -146,115 +149,6 @@ namespace CmmsHome.Api.Migrations
                     b.ToTable("Rules");
                 });
 
-            modelBuilder.Entity("CmmsHome.Api.Models.Part", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("BoxId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("LocationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal?>("MinQuantity")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("Quantity")
-                        .HasColumnType("numeric");
-
-                    b.Property<Guid?>("ShelfId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Unit")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BoxId");
-
-                    b.HasIndex("LocationId");
-
-                    b.HasIndex("ShelfId");
-
-                    b.ToTable("Parts");
-                });
-
-            modelBuilder.Entity("CmmsHome.Api.Models.PartUsage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("MaintenanceEventId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PartId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("QuantityUsed")
-                        .HasColumnType("numeric");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MaintenanceEventId");
-
-                    b.HasIndex("PartId");
-
-                    b.ToTable("PartUsages");
-                });
-
-            modelBuilder.Entity("CmmsHome.Api.Models.Shelf", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("LocationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LocationId");
-
-                    b.ToTable("Shelves");
-                });
-
-            modelBuilder.Entity("CmmsHome.Api.Models.StorageBox", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("LocationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid?>("ShelfId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LocationId");
-
-                    b.HasIndex("ShelfId");
-
-                    b.ToTable("Boxes");
-                });
-
             modelBuilder.Entity("CmmsHome.Api.Models.Asset", b =>
                 {
                     b.HasOne("CmmsHome.Api.Models.Category", "Category")
@@ -292,77 +186,6 @@ namespace CmmsHome.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Asset");
-                });
-
-            modelBuilder.Entity("CmmsHome.Api.Models.Part", b =>
-                {
-                    b.HasOne("CmmsHome.Api.Models.StorageBox", "Box")
-                        .WithMany()
-                        .HasForeignKey("BoxId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CmmsHome.Api.Models.Location", "Location")
-                        .WithMany()
-                        .HasForeignKey("LocationId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CmmsHome.Api.Models.Shelf", "Shelf")
-                        .WithMany()
-                        .HasForeignKey("ShelfId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Box");
-
-                    b.Navigation("Location");
-
-                    b.Navigation("Shelf");
-                });
-
-            modelBuilder.Entity("CmmsHome.Api.Models.PartUsage", b =>
-                {
-                    b.HasOne("CmmsHome.Api.Models.MaintenanceEvent", "MaintenanceEvent")
-                        .WithMany()
-                        .HasForeignKey("MaintenanceEventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CmmsHome.Api.Models.Part", "Part")
-                        .WithMany()
-                        .HasForeignKey("PartId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("MaintenanceEvent");
-
-                    b.Navigation("Part");
-                });
-
-            modelBuilder.Entity("CmmsHome.Api.Models.Shelf", b =>
-                {
-                    b.HasOne("CmmsHome.Api.Models.Location", "Location")
-                        .WithMany()
-                        .HasForeignKey("LocationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Location");
-                });
-
-            modelBuilder.Entity("CmmsHome.Api.Models.StorageBox", b =>
-                {
-                    b.HasOne("CmmsHome.Api.Models.Location", "Location")
-                        .WithMany()
-                        .HasForeignKey("LocationId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CmmsHome.Api.Models.Shelf", "Shelf")
-                        .WithMany()
-                        .HasForeignKey("ShelfId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Location");
-
-                    b.Navigation("Shelf");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.Asset", b =>

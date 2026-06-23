@@ -30,5 +30,9 @@ app.MapEventEndpoints();
 app.MapRuleEndpoints();
 app.MapLocationEndpoints();
 app.MapCategoryEndpoints();
+app.MapShelfEndpoints();
+app.MapBoxEndpoints();
+app.MapPartEndpoints();
+app.MapPartUsageEndpoints();
 
 app.Run();
