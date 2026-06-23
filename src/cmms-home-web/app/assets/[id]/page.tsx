@@ -149,7 +149,8 @@ export default function AssetDetailPage() {
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/assets" className="text-blue-500 text-sm">‹ Back</Link>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 truncate">{asset.name}</h1>
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 truncate flex-1">{asset.name}</h1>
+        <Link href={`/assets/${id}/edit`} className="text-sm text-blue-500 font-medium">Edit</Link>
       </div>
 
       {/* Info card */}

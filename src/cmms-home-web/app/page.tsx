@@ -88,6 +88,7 @@ export default function DashboardPage() {
                   >
                     <div>
                       <p className="font-semibold text-slate-800 dark:text-slate-100">{assets[r.assetId]?.name ?? '…'}</p>
+                      {r.name && <p className="text-xs text-slate-600 dark:text-slate-300">{r.name}</p>}
                       <p className="text-xs text-red-600 dark:text-red-400 font-medium">{dueLabel(r)}</p>
                     </div>
                     <span className="text-sm text-red-500 dark:text-red-400 font-bold">Log →</span>
@@ -111,6 +112,7 @@ export default function DashboardPage() {
                   >
                     <div>
                       <p className="font-medium text-slate-800 dark:text-slate-100">{assets[r.assetId]?.name ?? '…'}</p>
+                      {r.name && <p className="text-xs text-slate-600 dark:text-slate-300">{r.name}</p>}
                       <p className="text-xs text-amber-700 dark:text-amber-400">{dueLabel(r)}</p>
                     </div>
                     <span className="text-slate-400 dark:text-slate-500 text-lg">›</span>
