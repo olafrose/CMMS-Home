@@ -32,6 +32,10 @@ services:
       - "3000:3000"
     environment:
       - API_URL=http://api:8080
+      # Set this to override the base URL encoded in QR codes.
+      # Useful when accessing via reverse proxy, custom DNS, or VPN.
+      # Example: NEXT_PUBLIC_QR_BASE_URL=https://cmms.myhome.net
+      # Requires rebuilding the web container after changing.
     depends_on:
       - api
 

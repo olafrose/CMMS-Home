@@ -143,7 +143,7 @@ export default function AssetDetailPage() {
   if (loading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
   if (!asset) return <div className="p-6 text-red-500 text-sm">Asset not found</div>
 
-  const logUrl = `${origin}/assets/${id}/log`
+  const logUrl = `${process.env.NEXT_PUBLIC_QR_BASE_URL || origin}/assets/${id}/log`
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-6">
