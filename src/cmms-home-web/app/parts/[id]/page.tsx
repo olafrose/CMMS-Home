@@ -39,14 +39,14 @@ export default function PartDetailPage() {
   const [boxId, setBoxId] = useState('')
   const [locations, setLocations] = useState<Location[]>([])
   const [shelves, setShelves] = useState<Shelf[]>([])
-  const [boxes, setBoxes] = useState<StorageBox[]>([])
+  const [allBoxes, setAllBoxes] = useState<StorageBox[]>([])
   const [saving, setSaving] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
 
   useEffect(() => {
-    Promise.all([api.parts.get(id), api.partUsages.list(id), api.locations.list()])
-      .then(([p, u, locs]) => {
-        setPart(p); setUsages(u); setLocations(locs)
+    Promise.all([api.parts.get(id), api.partUsages.list(id), api.locations.list(), api.boxes.list()])
+      .then(([p, u, locs, bxs]) => {
+        setPart(p); setUsages(u); setLocations(locs); setAllBoxes(bxs)
         setName(p.name); setUnit(p.unit)
         setMinQuantity(p.minQuantity != null ? String(p.minQuantity) : '')
         setLocationId(p.locationId ?? p.shelf?.locationId ?? p.box?.shelf?.locationId ?? p.box?.locationId ?? '')
@@ -57,15 +57,17 @@ export default function PartDetailPage() {
   }, [id])
 
   useEffect(() => {
-    setShelves([]); if (!editing) return
-    if (locationId) api.shelves.list(locationId).then(setShelves)
+    setShelves([]); setBoxId('')
+    if (locationId && editing) api.shelves.list(locationId).then(setShelves)
   }, [locationId, editing])
 
-  useEffect(() => {
-    setBoxes([]); if (!editing) return
-    if (shelfId) api.boxes.list({ shelfId }).then(setBoxes)
-    else if (locationId) api.boxes.list({ locationId }).then(setBoxes)
-  }, [shelfId, locationId, editing])
+  useEffect(() => { if (editing) setBoxId('') }, [shelfId])
+
+  const filteredBoxes = shelfId
+    ? allBoxes.filter(b => b.shelfId === shelfId)
+    : locationId
+      ? allBoxes.filter(b => b.locationId === locationId || b.shelf?.locationId === locationId)
+      : allBoxes
 
   async function handleSave() {
     if (!part) return
@@ -183,12 +185,12 @@ export default function PartDetailPage() {
               </select>
             </div>
           )}
-          {boxes.length > 0 && (
+          {allBoxes.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Box</label>
               <select value={boxId} onChange={e => setBoxId(e.target.value)} className="field">
                 <option value="">— none —</option>
-                {boxes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                {filteredBoxes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
           )}

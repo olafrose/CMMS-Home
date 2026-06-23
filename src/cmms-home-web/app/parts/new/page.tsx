@@ -19,23 +19,27 @@ export default function NewPartPage() {
   const [boxId, setBoxId] = useState('')
   const [locations, setLocations] = useState<Location[]>([])
   const [shelves, setShelves] = useState<Shelf[]>([])
-  const [boxes, setBoxes] = useState<StorageBox[]>([])
+  const [allBoxes, setAllBoxes] = useState<StorageBox[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => { api.locations.list().then(setLocations) }, [])
+  useEffect(() => {
+    Promise.all([api.locations.list(), api.boxes.list()])
+      .then(([locs, bxs]) => { setLocations(locs); setAllBoxes(bxs) })
+  }, [])
 
   useEffect(() => {
-    setShelves([]); setShelfId('')
-    setBoxes([]); setBoxId('')
+    setShelves([]); setShelfId(''); setBoxId('')
     if (locationId) api.shelves.list(locationId).then(setShelves)
   }, [locationId])
 
-  useEffect(() => {
-    setBoxes([]); setBoxId('')
-    if (shelfId) api.boxes.list({ shelfId }).then(setBoxes)
-    else if (locationId) api.boxes.list({ locationId }).then(setBoxes)
-  }, [shelfId, locationId])
+  useEffect(() => { setBoxId('') }, [shelfId])
+
+  const filteredBoxes = shelfId
+    ? allBoxes.filter(b => b.shelfId === shelfId)
+    : locationId
+      ? allBoxes.filter(b => b.locationId === locationId || b.shelf?.locationId === locationId)
+      : allBoxes
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -119,12 +123,12 @@ export default function NewPartPage() {
               </select>
             </div>
           )}
-          {boxes.length > 0 && (
+          {allBoxes.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Box (optional)</label>
               <select value={boxId} onChange={e => setBoxId(e.target.value)} className="field">
                 <option value="">— none —</option>
-                {boxes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                {filteredBoxes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
           )}
