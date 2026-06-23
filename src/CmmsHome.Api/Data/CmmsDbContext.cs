@@ -8,6 +8,7 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<MaintenanceEvent> Events => Set<MaintenanceEvent>();
     public DbSet<MaintenanceRule> Rules => Set<MaintenanceRule>();
+    public DbSet<Location> Locations => Set<Location>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,6 +31,12 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .WithOne(r => r.Asset)
             .HasForeignKey(r => r.AssetId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Asset>()
+            .HasOne(a => a.Location)
+            .WithMany()
+            .HasForeignKey(a => a.LocationId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<MaintenanceRule>()
             .Property(r => r.IntervalUnit)

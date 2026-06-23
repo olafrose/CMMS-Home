@@ -1,24 +1,41 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import type { Location } from '@/lib/types'
+import LocationCombobox from '@/components/LocationCombobox'
 
 export default function NewAssetPage() {
   const router = useRouter()
   const [name, setName] = useState('')
   const [category, setCategory] = useState('')
-  const [location, setLocation] = useState('')
+  const [locationId, setLocationId] = useState<string | null>(null)
+  const [locations, setLocations] = useState<Location[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.locations.list().then(setLocations)
+  }, [])
+
+  async function handleCreateLocation(name: string) {
+    const loc = await api.locations.create(name)
+    setLocations((prev) => [...prev, loc].sort((a, b) => a.name.localeCompare(b.name)))
+    return loc
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) { setError('Name is required'); return }
     setSaving(true)
     try {
-      const asset = await api.assets.create({ name: name.trim(), category: category || undefined, location: location || undefined })
+      const asset = await api.assets.create({
+        name: name.trim(),
+        category: category || undefined,
+        locationId: locationId ?? undefined,
+      })
       router.push(`/assets/${asset.id}`)
     } catch {
       setError('Failed to save asset')
@@ -59,12 +76,11 @@ export default function NewAssetPage() {
 
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Location</label>
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="e.g. Basement, Garage"
-            className="field"
+          <LocationCombobox
+            locations={locations}
+            value={locationId}
+            onChange={setLocationId}
+            onCreateLocation={handleCreateLocation}
           />
         </div>
 

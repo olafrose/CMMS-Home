@@ -1,11 +1,17 @@
 export type MaintenanceStatus = 'Ok' | 'Upcoming' | 'Due' | 'Overdue'
 export type IntervalUnit = 'Days' | 'Weeks' | 'Months' | 'Years'
 
+export interface Location {
+  id: string
+  name: string
+}
+
 export interface Asset {
   id: string
   name: string
   category?: string
-  location?: string
+  locationId?: string
+  location?: Location
   imageUrl?: string
   createdAt: string
 }
@@ -32,7 +38,7 @@ export interface MaintenanceRule {
 export interface CreateAssetDto {
   name: string
   category?: string
-  location?: string
+  locationId?: string
   imageUrl?: string
 }
 

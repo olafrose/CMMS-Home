@@ -11,10 +11,10 @@ public static class AssetEndpoints
         var group = app.MapGroup("/assets").WithTags("Assets");
 
         group.MapGet("/", async (CmmsDbContext db) =>
-            await db.Assets.ToListAsync());
+            await db.Assets.Include(a => a.Location).ToListAsync());
 
         group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db) =>
-            await db.Assets.FindAsync(id) is Asset asset
+            await db.Assets.Include(a => a.Location).FirstOrDefaultAsync(a => a.Id == id) is Asset asset
                 ? Results.Ok(asset)
                 : Results.NotFound());
 
@@ -29,25 +29,27 @@ public static class AssetEndpoints
                 Id = Guid.NewGuid(),
                 Name = dto.Name,
                 Category = dto.Category,
-                Location = dto.Location,
+                LocationId = dto.LocationId,
                 ImageUrl = dto.ImageUrl,
                 CreatedAt = DateTime.UtcNow
             };
             db.Assets.Add(asset);
             await db.SaveChangesAsync();
+            await db.Entry(asset).Reference(a => a.Location).LoadAsync();
             return Results.Created($"/assets/{asset.Id}", asset);
         });
 
         group.MapPut("/{id:guid}", async (Guid id, CreateAssetDto dto, CmmsDbContext db) =>
         {
-            var asset = await db.Assets.FindAsync(id);
+            var asset = await db.Assets.Include(a => a.Location).FirstOrDefaultAsync(a => a.Id == id);
             if (asset is null) return Results.NotFound();
 
             asset.Name = dto.Name ?? asset.Name;
             asset.Category = dto.Category;
-            asset.Location = dto.Location;
+            asset.LocationId = dto.LocationId;
             asset.ImageUrl = dto.ImageUrl;
             await db.SaveChangesAsync();
+            await db.Entry(asset).Reference(a => a.Location).LoadAsync();
             return Results.Ok(asset);
         });
 
@@ -62,4 +64,4 @@ public static class AssetEndpoints
     }
 }
 
-record CreateAssetDto(string Name, string? Category, string? Location, string? ImageUrl);
+record CreateAssetDto(string Name, string? Category, Guid? LocationId, string? ImageUrl);

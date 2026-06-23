@@ -28,5 +28,6 @@ using (var scope = app.Services.CreateScope())
 app.MapAssetEndpoints();
 app.MapEventEndpoints();
 app.MapRuleEndpoints();
+app.MapLocationEndpoints();
 
 app.Run();

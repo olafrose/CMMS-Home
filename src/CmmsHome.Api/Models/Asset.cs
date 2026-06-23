@@ -5,7 +5,8 @@ public class Asset
     public Guid Id { get; set; }
     public required string Name { get; set; }
     public string? Category { get; set; }
-    public string? Location { get; set; }
+    public Guid? LocationId { get; set; }
+    public Location? Location { get; set; }
     public string? ImageUrl { get; set; }
     public DateTime CreatedAt { get; set; }
 

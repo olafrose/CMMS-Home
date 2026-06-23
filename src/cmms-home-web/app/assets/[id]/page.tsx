@@ -156,7 +156,7 @@ export default function AssetDetailPage() {
       {/* Info card */}
       <div className={`${card} px-4 py-4 space-y-1`}>
         {asset.category && <p className="text-sm text-slate-500 dark:text-slate-400"><span className="font-medium text-slate-700 dark:text-slate-300">Category:</span> {asset.category}</p>}
-        {asset.location && <p className="text-sm text-slate-500 dark:text-slate-400"><span className="font-medium text-slate-700 dark:text-slate-300">Location:</span> {asset.location}</p>}
+        {asset.location && <p className="text-sm text-slate-500 dark:text-slate-400"><span className="font-medium text-slate-700 dark:text-slate-300">Location:</span> {asset.location.name}</p>}
         <p className="text-sm text-slate-400 dark:text-slate-500">Added {formatDate(asset.createdAt)}</p>
       </div>
 
