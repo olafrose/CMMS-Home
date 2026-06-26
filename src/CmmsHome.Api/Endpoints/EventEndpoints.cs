@@ -67,11 +67,12 @@ public static class EventEndpoints
             };
             db.Events.Add(evt);
 
-            // Advance each rule's countdown to when the work was done — but never
+            // Advance each interval rule's countdown to when the work was done — but never
             // backwards, so logging an older forgotten event can't regress a schedule
-            // that a more recent event already advanced.
+            // that a more recent event already advanced. Due-date schedules are anchored to
+            // an explicit next-due date instead, so logging never touches them.
             await db.Rules
-                .Where(r => r.AssetId == dto.AssetId)
+                .Where(r => r.AssetId == dto.AssetId && r.ScheduleType == ScheduleType.Interval)
                 .ExecuteUpdateAsync(s => s.SetProperty(
                     r => r.LastDoneAt,
                     r => r.LastDoneAt == null || occurredAt > r.LastDoneAt ? occurredAt : r.LastDoneAt));

@@ -5,9 +5,21 @@ public class MaintenanceRule
     public Guid Id { get; set; }
     public Guid AssetId { get; set; }
     public string? Name { get; set; }
+    public ScheduleType ScheduleType { get; set; } = ScheduleType.Interval;
+
+    // Interval mode: due = LastDoneAt + IntervalValue·IntervalUnit
     public int IntervalValue { get; set; }
     public IntervalUnit IntervalUnit { get; set; } = IntervalUnit.Days;
     public DateTime? LastDoneAt { get; set; }
+
+    // DueDate mode: due = NextDueAt, with an optional grace window after it
+    public DateTime? NextDueAt { get; set; }
+    public int DueWindowValue { get; set; }
+    public IntervalUnit DueWindowUnit { get; set; } = IntervalUnit.Days;
+
+    // Reminder lead — how far before "due" it flags as Upcoming (both modes)
+    public int ReminderLeadValue { get; set; } = 30;
+    public IntervalUnit ReminderLeadUnit { get; set; } = IntervalUnit.Days;
 
     public Asset Asset { get; set; } = null!;
 
@@ -15,20 +27,38 @@ public class MaintenanceRule
     {
         get
         {
-            if (LastDoneAt is null) return MaintenanceStatus.Due;
-            var due = IntervalUnit switch
+            DateTime due;
+            DateTime overdueAfter;
+            if (ScheduleType == ScheduleType.DueDate)
             {
-                IntervalUnit.Weeks  => LastDoneAt.Value.AddDays(IntervalValue * 7),
-                IntervalUnit.Months => LastDoneAt.Value.AddMonths(IntervalValue),
-                IntervalUnit.Years  => LastDoneAt.Value.AddYears(IntervalValue),
-                _                   => LastDoneAt.Value.AddDays(IntervalValue),
-            };
-            if (due < DateTime.UtcNow) return MaintenanceStatus.Overdue;
-            if (due <= DateTime.UtcNow.AddDays(30)) return MaintenanceStatus.Upcoming;
+                if (NextDueAt is null) return MaintenanceStatus.Due;
+                due = NextDueAt.Value;
+                overdueAfter = AddSpan(due, DueWindowValue, DueWindowUnit);
+            }
+            else
+            {
+                if (LastDoneAt is null) return MaintenanceStatus.Due;
+                due = AddSpan(LastDoneAt.Value, IntervalValue, IntervalUnit);
+                overdueAfter = due; // interval rules have no grace window
+            }
+
+            var now = DateTime.UtcNow;
+            if (now > overdueAfter) return MaintenanceStatus.Overdue;
+            if (now >= due) return MaintenanceStatus.Due;
+            if (now >= AddSpan(due, -ReminderLeadValue, ReminderLeadUnit)) return MaintenanceStatus.Upcoming;
             return MaintenanceStatus.Ok;
         }
     }
+
+    static DateTime AddSpan(DateTime from, int value, IntervalUnit unit) => unit switch
+    {
+        IntervalUnit.Weeks  => from.AddDays(value * 7),
+        IntervalUnit.Months => from.AddMonths(value),
+        IntervalUnit.Years  => from.AddYears(value),
+        _                   => from.AddDays(value),
+    };
 }
 
 public enum MaintenanceStatus { Ok, Upcoming, Due, Overdue }
 public enum IntervalUnit { Days, Weeks, Months, Years }
+public enum ScheduleType { Interval, DueDate }

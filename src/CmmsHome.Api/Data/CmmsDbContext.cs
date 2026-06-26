@@ -53,6 +53,22 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .Property(r => r.IntervalUnit)
             .HasDefaultValue(IntervalUnit.Days);
 
+        modelBuilder.Entity<MaintenanceRule>()
+            .Property(r => r.ScheduleType)
+            .HasDefaultValue(ScheduleType.Interval);
+
+        modelBuilder.Entity<MaintenanceRule>()
+            .Property(r => r.DueWindowUnit)
+            .HasDefaultValue(IntervalUnit.Days);
+
+        modelBuilder.Entity<MaintenanceRule>()
+            .Property(r => r.ReminderLeadValue)
+            .HasDefaultValue(30);
+
+        modelBuilder.Entity<MaintenanceRule>()
+            .Property(r => r.ReminderLeadUnit)
+            .HasDefaultValue(IntervalUnit.Days);
+
         modelBuilder.Entity<Shelf>()
             .HasOne(s => s.Location)
             .WithMany()

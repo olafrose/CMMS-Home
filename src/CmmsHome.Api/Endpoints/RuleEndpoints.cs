@@ -28,9 +28,15 @@ public static class RuleEndpoints
                 Id = Guid.NewGuid(),
                 AssetId = dto.AssetId,
                 Name = dto.Name,
+                ScheduleType = dto.ScheduleType,
                 IntervalValue = dto.IntervalValue,
                 IntervalUnit = dto.IntervalUnit,
-                LastDoneAt = dto.LastDoneAt
+                LastDoneAt = dto.LastDoneAt,
+                NextDueAt = dto.NextDueAt,
+                DueWindowValue = dto.DueWindowValue,
+                DueWindowUnit = dto.DueWindowUnit,
+                ReminderLeadValue = dto.ReminderLeadValue,
+                ReminderLeadUnit = dto.ReminderLeadUnit
             };
             db.Rules.Add(rule);
             await db.SaveChangesAsync();
@@ -43,9 +49,15 @@ public static class RuleEndpoints
             if (rule is null) return Results.NotFound();
 
             if (dto.Name is not null) rule.Name = dto.Name;
+            if (dto.ScheduleType.HasValue) rule.ScheduleType = dto.ScheduleType.Value;
             if (dto.IntervalValue.HasValue) rule.IntervalValue = dto.IntervalValue.Value;
             if (dto.IntervalUnit.HasValue) rule.IntervalUnit = dto.IntervalUnit.Value;
             if (dto.LastDoneAt.HasValue) rule.LastDoneAt = dto.LastDoneAt.Value;
+            if (dto.NextDueAt.HasValue) rule.NextDueAt = dto.NextDueAt.Value;
+            if (dto.DueWindowValue.HasValue) rule.DueWindowValue = dto.DueWindowValue.Value;
+            if (dto.DueWindowUnit.HasValue) rule.DueWindowUnit = dto.DueWindowUnit.Value;
+            if (dto.ReminderLeadValue.HasValue) rule.ReminderLeadValue = dto.ReminderLeadValue.Value;
+            if (dto.ReminderLeadUnit.HasValue) rule.ReminderLeadUnit = dto.ReminderLeadUnit.Value;
             await db.SaveChangesAsync();
             return Results.Ok(rule);
         });
@@ -61,5 +73,13 @@ public static class RuleEndpoints
     }
 }
 
-record CreateRuleDto(Guid AssetId, string? Name, int IntervalValue, IntervalUnit IntervalUnit, DateTime? LastDoneAt);
-record UpdateRuleDto(string? Name, int? IntervalValue, IntervalUnit? IntervalUnit, DateTime? LastDoneAt);
+record CreateRuleDto(
+    Guid AssetId, string? Name, ScheduleType ScheduleType,
+    int IntervalValue, IntervalUnit IntervalUnit, DateTime? LastDoneAt,
+    DateTime? NextDueAt, int DueWindowValue, IntervalUnit DueWindowUnit,
+    int ReminderLeadValue, IntervalUnit ReminderLeadUnit);
+record UpdateRuleDto(
+    string? Name, ScheduleType? ScheduleType,
+    int? IntervalValue, IntervalUnit? IntervalUnit, DateTime? LastDoneAt,
+    DateTime? NextDueAt, int? DueWindowValue, IntervalUnit? DueWindowUnit,
+    int? ReminderLeadValue, IntervalUnit? ReminderLeadUnit);

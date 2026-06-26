@@ -1,5 +1,6 @@
 export type MaintenanceStatus = 'Ok' | 'Upcoming' | 'Due' | 'Overdue'
 export type IntervalUnit = 'Days' | 'Weeks' | 'Months' | 'Years'
+export type ScheduleType = 'Interval' | 'DueDate'
 
 export interface Location {
   id: string
@@ -73,9 +74,15 @@ export interface MaintenanceRule {
   id: string
   assetId: string
   name?: string
+  scheduleType: ScheduleType
   intervalValue: number
   intervalUnit: IntervalUnit
   lastDoneAt?: string
+  nextDueAt?: string
+  dueWindowValue: number
+  dueWindowUnit: IntervalUnit
+  reminderLeadValue: number
+  reminderLeadUnit: IntervalUnit
   status: MaintenanceStatus
 }
 
@@ -103,14 +110,26 @@ export interface UpdateEventDto {
 export interface CreateRuleDto {
   assetId: string
   name?: string
+  scheduleType: ScheduleType
   intervalValue: number
   intervalUnit: IntervalUnit
   lastDoneAt?: string
+  nextDueAt?: string
+  dueWindowValue: number
+  dueWindowUnit: IntervalUnit
+  reminderLeadValue: number
+  reminderLeadUnit: IntervalUnit
 }
 
 export interface UpdateRuleDto {
   name?: string
+  scheduleType?: ScheduleType
   intervalValue?: number
   intervalUnit?: IntervalUnit
   lastDoneAt?: string
+  nextDueAt?: string
+  dueWindowValue?: number
+  dueWindowUnit?: IntervalUnit
+  reminderLeadValue?: number
+  reminderLeadUnit?: IntervalUnit
 }

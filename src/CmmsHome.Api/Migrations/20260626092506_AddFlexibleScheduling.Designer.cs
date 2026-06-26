@@ -3,6 +3,7 @@ using System;
 using CmmsHome.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CmmsHome.Api.Migrations
 {
     [DbContext(typeof(CmmsDbContext))]
-    partial class CmmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260626092506_AddFlexibleScheduling")]
+    partial class AddFlexibleScheduling
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

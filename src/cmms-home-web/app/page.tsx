@@ -14,16 +14,23 @@ function addInterval(date: Date, value: number, unit: MaintenanceRule['intervalU
   return d
 }
 
+function dueDate(rule: MaintenanceRule): Date | null {
+  if (rule.scheduleType === 'DueDate') return rule.nextDueAt ? new Date(rule.nextDueAt) : null
+  return rule.lastDoneAt ? addInterval(new Date(rule.lastDoneAt), rule.intervalValue, rule.intervalUnit) : null
+}
+
 function daysRelative(rule: MaintenanceRule): number {
-  if (!rule.lastDoneAt) return -Infinity
-  const due = addInterval(new Date(rule.lastDoneAt), rule.intervalValue, rule.intervalUnit)
+  const due = dueDate(rule)
+  if (!due) return -Infinity
   return Math.round((due.getTime() - Date.now()) / 86_400_000)
 }
 
 function dueLabel(rule: MaintenanceRule): string {
-  if (!rule.lastDoneAt) return 'Never done — do it now'
+  const due = dueDate(rule)
+  if (!due) return rule.scheduleType === 'DueDate' ? 'No due date set' : 'Never done — do it now'
   const d = daysRelative(rule)
-  if (d < 0) return `${Math.abs(d)} day${Math.abs(d) !== 1 ? 's' : ''} overdue`
+  // Within a due-date grace window the backend reports Due (not Overdue), so don't say "overdue".
+  if (d < 0) return rule.status === 'Due' ? 'Due now' : `${Math.abs(d)} day${Math.abs(d) !== 1 ? 's' : ''} overdue`
   if (d === 0) return 'Due today'
   return `Due in ${d} day${d !== 1 ? 's' : ''}`
 }

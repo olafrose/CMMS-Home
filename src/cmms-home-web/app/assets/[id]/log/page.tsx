@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import type { MaintenanceRule } from '@/lib/types'
 
 const EVENT_TYPES = [
   { value: 'maintenance', label: '🔩 Maintenance', active: 'border-blue-400 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' },
@@ -20,6 +21,20 @@ export default function LogMaintenancePage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
 
+  // Due-date schedules on this asset, with an editable next-due date each
+  const [dueRules, setDueRules] = useState<MaintenanceRule[]>([])
+  const [dueDates, setDueDates] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    api.rules.list(id).then((rs) => {
+      const due = rs.filter((r) => r.scheduleType === 'DueDate')
+      setDueRules(due)
+      setDueDates(Object.fromEntries(
+        due.map((r) => [r.id, r.nextDueAt ? new Date(r.nextDueAt).toISOString().slice(0, 10) : '']),
+      ))
+    }).catch(() => {})
+  }, [id])
+
   async function handleSave() {
     setSaving(true)
     try {
@@ -29,6 +44,14 @@ export default function LogMaintenancePage() {
         note: note.trim() || undefined,
         occurredAt: new Date(date).toISOString(),
       })
+      // Push any new next-due dates for the asset's due-date schedules
+      await Promise.all(dueRules
+        .filter((r) => {
+          const v = dueDates[r.id]
+          const orig = r.nextDueAt ? new Date(r.nextDueAt).toISOString().slice(0, 10) : ''
+          return v && v !== orig
+        })
+        .map((r) => api.rules.update(r.id, { nextDueAt: new Date(dueDates[r.id]).toISOString() })))
       router.push(`/events/${event.id}?asset_id=${id}`)
     } catch {
       setSaving(false)
@@ -73,6 +96,25 @@ export default function LogMaintenancePage() {
         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date</label>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="field" />
       </div>
+
+      {dueRules.length > 0 && (
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Next due date</label>
+          {dueRules.map((r) => (
+            <div key={r.id}>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                {r.name || 'Due-date schedule'}
+              </label>
+              <input
+                type="date"
+                value={dueDates[r.id] ?? ''}
+                onChange={(e) => setDueDates((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                className="field"
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       <button
         onClick={handleSave}
