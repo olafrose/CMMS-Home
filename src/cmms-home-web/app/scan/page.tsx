@@ -36,9 +36,12 @@ export default function ScanPage() {
   }, [isSecure]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDecoded(decoded: string) {
-    const match = decoded.match(/\/assets\/([0-9a-f-]{36})/i)
-    if (match) {
-      router.push(`/assets/${match[1]}/log`)
+    const storage = decoded.match(/\/storage\/(box|shelf)\/([0-9a-f-]{36})/i)
+    const asset = decoded.match(/\/assets\/([0-9a-f-]{36})/i)
+    if (storage) {
+      router.push(`/storage/${storage[1].toLowerCase()}/${storage[2]}`)
+    } else if (asset) {
+      router.push(`/assets/${asset[1]}/log`)
     } else if (/^[0-9a-f-]{36}$/i.test(decoded)) {
       router.push(`/assets/${decoded}/log`)
     } else {

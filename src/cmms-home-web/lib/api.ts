@@ -89,10 +89,12 @@ export const api = {
       request<void>(`/boxes/${id}`, { method: 'DELETE' }),
   },
   parts: {
-    list: (opts?: { lowStock?: boolean; assetId?: string }) => {
+    list: (opts?: { lowStock?: boolean; assetId?: string; boxId?: string; shelfId?: string }) => {
       const params = new URLSearchParams()
       if (opts?.lowStock) params.set('low_stock', 'true')
       if (opts?.assetId) params.set('asset_id', opts.assetId)
+      if (opts?.boxId) params.set('box_id', opts.boxId)
+      if (opts?.shelfId) params.set('shelf_id', opts.shelfId)
       const qs = params.size ? `?${params}` : ''
       return request<Part[]>(`/parts${qs}`)
     },

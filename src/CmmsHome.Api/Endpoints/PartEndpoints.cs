@@ -10,7 +10,7 @@ public static class PartEndpoints
     {
         var group = app.MapGroup("/parts").WithTags("Parts");
 
-        group.MapGet("/", async (bool? low_stock, Guid? asset_id, CmmsDbContext db) =>
+        group.MapGet("/", async (bool? low_stock, Guid? asset_id, Guid? box_id, Guid? shelf_id, CmmsDbContext db) =>
         {
             var q = db.Parts
                 .Include(p => p.Box).ThenInclude(b => b!.Shelf).ThenInclude(s => s!.Location)
@@ -26,6 +26,13 @@ public static class PartEndpoints
 
             if (asset_id.HasValue)
                 q = q.Where(p => p.AssetId == asset_id.Value);
+
+            if (box_id.HasValue)
+                q = q.Where(p => p.BoxId == box_id.Value);
+
+            // A shelf's contents: parts loose on the shelf, plus parts in boxes on that shelf.
+            if (shelf_id.HasValue)
+                q = q.Where(p => p.ShelfId == shelf_id.Value || p.Box!.ShelfId == shelf_id.Value);
 
             return await q.OrderBy(p => p.Name).ToListAsync();
         });

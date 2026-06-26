@@ -52,6 +52,7 @@ function ShelfSection({ shelf, boxes, shelves, locations, onRenameShelf, onDelet
             <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{shelf.location.name}</span>
             <span className="ml-auto text-slate-400 text-sm">{expanded ? '▲' : '▼'}</span>
           </button>
+          <Link href={`/storage/shelf/${shelf.id}`} className="text-slate-400 hover:text-blue-500 text-lg leading-none" aria-label="Contents">🔍</Link>
           <button onClick={() => setEditingShelf(true)} className="text-slate-400 hover:text-blue-500 text-lg leading-none" aria-label="Edit">✏️</button>
           <button onClick={() => onDeleteShelf(shelf)} className="text-slate-400 hover:text-red-500 text-lg leading-none" aria-label="Delete">🗑️</button>
         </div>
@@ -90,6 +91,7 @@ function ShelfSection({ shelf, boxes, shelves, locations, onRenameShelf, onDelet
                   ) : (
                     <>
                       <span className="flex-1 text-sm text-slate-600 dark:text-slate-300">📦 {box.name}</span>
+                      <Link href={`/storage/box/${box.id}`} className="text-slate-400 hover:text-blue-500 text-base leading-none" aria-label="Contents">🔍</Link>
                       <button onClick={() => { setMovingBoxId(box.id); setMoveLocationId(shelf.locationId); setMoveShelfId(shelf.id) }} className="text-slate-400 hover:text-amber-500 text-base leading-none" aria-label="Move">↗️</button>
                       <button onClick={() => { setEditingBoxId(box.id); setEditBoxName(box.name) }} className="text-slate-400 hover:text-blue-500 text-base leading-none">✏️</button>
                       <button onClick={() => onDeleteBox(box)} className="text-slate-400 hover:text-red-500 text-base leading-none">🗑️</button>
@@ -288,6 +290,7 @@ export default function StoragePage() {
                     📦 {box.name}
                     {box.location && <span className="ml-2 text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{box.location.name}</span>}
                   </span>
+                  <Link href={`/storage/box/${box.id}`} className="text-slate-400 hover:text-blue-500 text-lg leading-none" aria-label="Contents">🔍</Link>
                   <button onClick={() => { setMovingFreeBoxId(box.id); setMoveFreeLocationId(box.locationId ?? locations[0]?.id ?? ''); setMoveFreeShelfId('') }}
                     className="text-slate-400 hover:text-amber-500 text-lg leading-none" aria-label="Move">↗️</button>
                   <button onClick={() => { setEditingFreeBoxId(box.id); setEditFreeBoxName(box.name) }}
