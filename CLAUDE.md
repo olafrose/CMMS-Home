@@ -85,19 +85,26 @@ Next.js 16 App Router. All pages are `'use client'` with client-side data fetchi
 ## Data Model
 
 ```
-Asset               { Id UUID, Name*, Category?, Location?, ImageUrl?, CreatedAt }
+Asset               { Id UUID, Name*, CategoryId?→Category, LocationId?→Location, ImageUrl?, CreatedAt }
 MaintenanceEvent    { Id, AssetId, Type(maintenance|repair|cleaning|replacement), Note?, PhotoUrl?, CreatedAt }
-MaintenanceRule     { Id, AssetId, IntervalDays, LastDoneAt? }
+MaintenanceRule     { Id, AssetId, Name?, IntervalValue, IntervalUnit(Days|Weeks|Months|Years), LastDoneAt? }
 ```
 
-Due/overdue logic (in `MaintenanceRule.Status`): `LastDoneAt + IntervalDays < UtcNow` → Overdue; within 30 days → Upcoming; `LastDoneAt` null → Due.
+(`Category`/`Location` are first-class entities; parts/storage models are in the Parts & Storage section below.)
+
+Due/overdue logic (in `MaintenanceRule.Status`): `LastDoneAt + IntervalValue·IntervalUnit < UtcNow` → Overdue; within 30 days → Upcoming; `LastDoneAt` null → Due.
 
 ## REST API Surface
 
 ```
-Assets:  POST/GET /assets  |  GET/PUT/DELETE /assets/{id}
-Events:  POST /events  |  GET /events?asset_id=  |  GET /events/{id}
-Rules:   POST /rules  |  GET /rules?asset_id=  |  PUT /rules/{id}
+Assets:      POST/GET /assets  |  GET/PUT/DELETE /assets/{id}
+Events:      POST /events  |  GET /events?asset_id=  |  GET /events/{id}
+Rules:       POST /rules  |  GET /rules?asset_id=  |  PUT /rules/{id}
+Locations:   CRUD /locations
+Categories:  CRUD /categories
+Shelves:     CRUD /shelves   |  Boxes: CRUD /boxes
+Parts:       POST/GET /parts  |  GET/PUT/DELETE /parts/{id}
+PartUsages:  POST/GET /part-usages  |  DELETE /part-usages/{id}
 ```
 
 ## Key UX Constraints
@@ -107,6 +114,29 @@ Rules:   POST /rules  |  GET /rules?asset_id=  |  PUT /rules/{id}
 - **Minimal required fields**: Only `Name` is required for assets; `Type` for events
 - **Mobile-first**: All UI decisions should prioritize mobile usability
 
+## Parts & Storage (added to MVP after first verification)
+
+Spare-parts management was **intentionally added to the MVP scope after the core
+functionality was first verified working**. It is no longer out of scope. It
+comprises parts inventory, per-event parts consumption, and a storage hierarchy:
+
+```
+Part       { Id, Name*, Quantity, Unit*, MinQuantity?, BoxId? | ShelfId? | LocationId? }
+PartUsage  { Id, MaintenanceEventId, PartId, QuantityUsed }   # parts consumed by an event
+StorageBox { Id, Name, ShelfId? | LocationId? }
+Shelf      { Id, Name, LocationId }
+```
+
+- A `Part` references exactly one of `BoxId` / `ShelfId` / `LocationId` for its location.
+- Logging a maintenance event flows into an optional "parts used" step
+  (`/events/{id}/parts`) which decrements stock.
+- Dashboard surfaces low-stock parts (`Quantity ≤ MinQuantity`).
+- Endpoints: `PartEndpoints`, `PartUsageEndpoints`, `BoxEndpoints`, `ShelfEndpoints`.
+- Frontend: `/parts`, `/storage` pages + `LocationCombobox` / `EntityCombobox`.
+
+`Category` and `Location` were also promoted from free-text asset fields to first-class
+entities (with `/categories` and `/locations` management pages).
+
 ## Out of Scope (MVP)
 
-Auth, multi-user, Home Assistant integration, OBD2/vehicle diagnostics, operating hours tracking, spare parts, AI features, document management.
+Auth, multi-user, Home Assistant integration, OBD2/vehicle diagnostics, operating hours tracking, AI features, document management.
