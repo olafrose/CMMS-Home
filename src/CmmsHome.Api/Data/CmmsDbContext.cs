@@ -14,6 +14,7 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<StorageBox> Boxes => Set<StorageBox>();
     public DbSet<Part> Parts => Set<Part>();
     public DbSet<PartUsage> PartUsages => Set<PartUsage>();
+    public DbSet<PartCategory> PartCategories => Set<PartCategory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -103,6 +104,18 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .HasOne(p => p.Location)
             .WithMany()
             .HasForeignKey(p => p.LocationId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Part>()
+            .HasOne(p => p.Asset)
+            .WithMany()
+            .HasForeignKey(p => p.AssetId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Part>()
+            .HasOne(p => p.PartCategory)
+            .WithMany()
+            .HasForeignKey(p => p.PartCategoryId)
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<PartUsage>()

@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '@/lib/api'
-import type { Asset, IntervalUnit, MaintenanceEvent, MaintenanceRule, MaintenanceStatus, ScheduleType } from '@/lib/types'
+import type { Asset, IntervalUnit, MaintenanceEvent, MaintenanceRule, MaintenanceStatus, Part, ScheduleType } from '@/lib/types'
 
 const INTERVAL_UNITS: IntervalUnit[] = ['Days', 'Weeks', 'Months', 'Years']
 
@@ -191,6 +191,7 @@ export default function AssetDetailPage() {
   const [asset, setAsset] = useState<Asset | null>(null)
   const [events, setEvents] = useState<MaintenanceEvent[]>([])
   const [rules, setRules] = useState<MaintenanceRule[]>([])
+  const [parts, setParts] = useState<Part[]>([])
   const [origin, setOrigin] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -207,6 +208,7 @@ export default function AssetDetailPage() {
     Promise.all([api.assets.get(id), api.events.list(id), api.rules.list(id)])
       .then(([a, e, r]) => { setAsset(a); setEvents(e); setRules(r) })
       .finally(() => setLoading(false))
+    api.parts.list({ assetId: id }).then(setParts).catch(() => {})
   }, [id])
 
   async function handleAddRule(v: RuleFormValues) {
@@ -365,6 +367,34 @@ export default function AssetDetailPage() {
           </ul>
         )}
       </section>
+
+      {/* Parts for this asset */}
+      {parts.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
+            Parts ({parts.length})
+          </h2>
+          <ul className="space-y-2">
+            {parts.map((p) => {
+              const lowStock = p.minQuantity != null && p.quantity <= p.minQuantity
+              return (
+                <li key={p.id}>
+                  <Link href={`/parts/${p.id}`} className={`flex items-center gap-3 ${card} px-4 py-3`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{p.name}</p>
+                      {p.partCategory && <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{p.partCategory.name}</p>}
+                    </div>
+                    <span className={`text-sm font-semibold ${lowStock ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                      {p.quantity} {p.unit}
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-600 text-lg">›</span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
 
       {/* Delete asset */}
       <section className="pt-2 border-t border-slate-200 dark:border-slate-700">

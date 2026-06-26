@@ -28,12 +28,21 @@ export interface StorageBox {
   location?: Location
 }
 
+export interface PartCategory {
+  id: string
+  name: string
+}
+
 export interface Part {
   id: string
   name: string
   quantity: number
   unit: string
   minQuantity?: number
+  assetId?: string
+  asset?: Asset
+  partCategoryId?: string
+  partCategory?: PartCategory
   boxId?: string
   box?: StorageBox
   shelfId?: string

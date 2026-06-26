@@ -47,7 +47,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([api.assets.list(), api.rules.list(), api.events.list(), api.parts.list(true)])
+    Promise.all([api.assets.list(), api.rules.list(), api.events.list(), api.parts.list({ lowStock: true })])
       .then(([a, r, e, p]) => {
         setAssets(Object.fromEntries(a.map((x) => [x.id, x])))
         setRules(r.sort((a, b) => daysRelative(a) - daysRelative(b)))

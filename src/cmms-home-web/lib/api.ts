@@ -1,5 +1,5 @@
 import type {
-  Asset, Category, Location, MaintenanceEvent, MaintenanceRule, Part, PartUsage, Shelf, StorageBox,
+  Asset, Category, Location, MaintenanceEvent, MaintenanceRule, Part, PartCategory, PartUsage, Shelf, StorageBox,
   CreateAssetDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
 } from './types'
 
@@ -89,19 +89,35 @@ export const api = {
       request<void>(`/boxes/${id}`, { method: 'DELETE' }),
   },
   parts: {
-    list: (lowStock?: boolean) =>
-      request<Part[]>(`/parts${lowStock ? '?low_stock=true' : ''}`),
+    list: (opts?: { lowStock?: boolean; assetId?: string }) => {
+      const params = new URLSearchParams()
+      if (opts?.lowStock) params.set('low_stock', 'true')
+      if (opts?.assetId) params.set('asset_id', opts.assetId)
+      const qs = params.size ? `?${params}` : ''
+      return request<Part[]>(`/parts${qs}`)
+    },
     get: (id: string) => request<Part>(`/parts/${id}`),
     create: (dto: {
       name: string; quantity: number; unit: string; minQuantity?: number
+      assetId?: string; partCategoryId?: string
       boxId?: string; shelfId?: string; locationId?: string
     }) => request<Part>('/parts', { method: 'POST', body: JSON.stringify(dto) }),
     update: (id: string, dto: {
       name: string; quantity: number; unit: string; minQuantity?: number
+      assetId?: string; partCategoryId?: string
       boxId?: string; shelfId?: string; locationId?: string
     }) => request<Part>(`/parts/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
     delete: (id: string) =>
       request<void>(`/parts/${id}`, { method: 'DELETE' }),
+  },
+  partCategories: {
+    list: () => request<PartCategory[]>('/part-categories'),
+    create: (name: string) =>
+      request<PartCategory>('/part-categories', { method: 'POST', body: JSON.stringify({ name }) }),
+    update: (id: string, name: string) =>
+      request<PartCategory>(`/part-categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+    delete: (id: string) =>
+      request<void>(`/part-categories/${id}`, { method: 'DELETE' }),
   },
   partUsages: {
     list: (eventId: string) =>

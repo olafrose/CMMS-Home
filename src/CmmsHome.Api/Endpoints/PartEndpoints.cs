@@ -10,17 +10,22 @@ public static class PartEndpoints
     {
         var group = app.MapGroup("/parts").WithTags("Parts");
 
-        group.MapGet("/", async (bool? low_stock, CmmsDbContext db) =>
+        group.MapGet("/", async (bool? low_stock, Guid? asset_id, CmmsDbContext db) =>
         {
             var q = db.Parts
                 .Include(p => p.Box).ThenInclude(b => b!.Shelf).ThenInclude(s => s!.Location)
                 .Include(p => p.Box).ThenInclude(b => b!.Location)
                 .Include(p => p.Shelf).ThenInclude(s => s!.Location)
                 .Include(p => p.Location)
+                .Include(p => p.Asset)
+                .Include(p => p.PartCategory)
                 .AsQueryable();
 
             if (low_stock == true)
                 q = q.Where(p => p.MinQuantity != null && p.Quantity <= p.MinQuantity);
+
+            if (asset_id.HasValue)
+                q = q.Where(p => p.AssetId == asset_id.Value);
 
             return await q.OrderBy(p => p.Name).ToListAsync();
         });
@@ -32,6 +37,8 @@ public static class PartEndpoints
                 .Include(p => p.Box).ThenInclude(b => b!.Location)
                 .Include(p => p.Shelf).ThenInclude(s => s!.Location)
                 .Include(p => p.Location)
+                .Include(p => p.Asset)
+                .Include(p => p.PartCategory)
                 .FirstOrDefaultAsync(p => p.Id == id);
             return part is not null ? Results.Ok(part) : Results.NotFound();
         });
@@ -52,6 +59,8 @@ public static class PartEndpoints
                 Quantity = dto.Quantity,
                 Unit = dto.Unit.Trim(),
                 MinQuantity = dto.MinQuantity,
+                AssetId = dto.AssetId,
+                PartCategoryId = dto.PartCategoryId,
                 BoxId = dto.BoxId,
                 ShelfId = dto.ShelfId,
                 LocationId = dto.LocationId,
@@ -71,6 +80,8 @@ public static class PartEndpoints
             part.Quantity = dto.Quantity;
             part.Unit = dto.Unit.Trim();
             part.MinQuantity = dto.MinQuantity;
+            part.AssetId = dto.AssetId;
+            part.PartCategoryId = dto.PartCategoryId;
             part.BoxId = dto.BoxId;
             part.ShelfId = dto.ShelfId;
             part.LocationId = dto.LocationId;
@@ -103,8 +114,10 @@ public static class PartEndpoints
         if (part.Shelf is not null)
             await db.Entry(part.Shelf).Reference(s => s.Location).LoadAsync();
         await db.Entry(part).Reference(p => p.Location).LoadAsync();
+        await db.Entry(part).Reference(p => p.Asset).LoadAsync();
+        await db.Entry(part).Reference(p => p.PartCategory).LoadAsync();
     }
 }
 
 record CreatePartDto(string Name, decimal Quantity, string Unit, decimal? MinQuantity,
-    Guid? BoxId, Guid? ShelfId, Guid? LocationId);
+    Guid? AssetId, Guid? PartCategoryId, Guid? BoxId, Guid? ShelfId, Guid? LocationId);

@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Location, Shelf, StorageBox } from '@/lib/types'
+import EntityCombobox from '@/components/EntityCombobox'
+import StoragePicker from '@/components/StoragePicker'
+import type { Asset, PartCategory } from '@/lib/types'
 
 const UNIT_SUGGESTIONS = ['each', 'L', 'mL', 'kg', 'g', 'm', 'cm', 'pack']
 
@@ -14,30 +16,20 @@ export default function NewPartPage() {
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
+  const [assetId, setAssetId] = useState('')
+  const [partCategoryId, setPartCategoryId] = useState<string | null>(null)
   const [locationId, setLocationId] = useState('')
   const [shelfId, setShelfId] = useState('')
   const [boxId, setBoxId] = useState('')
-  const [locations, setLocations] = useState<Location[]>([])
-  const [shelves, setShelves] = useState<Shelf[]>([])
-  const [allBoxes, setAllBoxes] = useState<StorageBox[]>([])
+  const [assets, setAssets] = useState<Asset[]>([])
+  const [partCategories, setPartCategories] = useState<PartCategory[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([api.locations.list(), api.boxes.list()])
-      .then(([locs, bxs]) => { setLocations(locs); setAllBoxes(bxs) })
+    Promise.all([api.assets.list(), api.partCategories.list()])
+      .then(([asts, cats]) => { setAssets(asts); setPartCategories(cats) })
   }, [])
-
-  useEffect(() => {
-    setShelves([])
-    if (locationId) api.shelves.list(locationId).then(setShelves)
-  }, [locationId])
-
-  const filteredBoxes = shelfId
-    ? allBoxes.filter(b => b.shelfId === shelfId)
-    : locationId
-      ? allBoxes.filter(b => b.locationId === locationId || b.shelf?.locationId === locationId)
-      : allBoxes
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -51,6 +43,8 @@ export default function NewPartPage() {
         quantity: Number(quantity),
         unit: unit.trim(),
         minQuantity: minQuantity ? Number(minQuantity) : undefined,
+        assetId: assetId || undefined,
+        partCategoryId: partCategoryId || undefined,
         boxId: boxId || undefined,
         shelfId: !boxId && shelfId ? shelfId : undefined,
         locationId: !boxId && !shelfId && locationId ? locationId : undefined,
@@ -103,40 +97,33 @@ export default function NewPartPage() {
           </div>
         </div>
 
-        <fieldset className="space-y-3 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
-          <legend className="text-sm font-medium text-slate-700 dark:text-slate-300 px-1">Storage location</legend>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Location</label>
-            <select value={locationId} onChange={e => { setLocationId(e.target.value); setShelfId(''); setBoxId('') }} className="field">
-              <option value="">— none —</option>
-              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          </div>
-          {shelves.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Shelf (optional)</label>
-              <select value={shelfId} onChange={e => { setShelfId(e.target.value); setBoxId('') }} className="field">
-                <option value="">— none —</option>
-                {shelves.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-          )}
-          {allBoxes.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Box (optional)</label>
-              <select value={boxId} onChange={e => {
-                const id = e.target.value; setBoxId(id)
-                if (id) {
-                  const box = allBoxes.find(b => b.id === id)
-                  if (box) { setLocationId(box.shelf?.locationId ?? box.locationId ?? ''); setShelfId(box.shelfId ?? '') }
-                }
-              }} className="field">
-                <option value="">— none —</option>
-                {filteredBoxes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
-          )}
-        </fieldset>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">For asset (optional)</label>
+          <select value={assetId} onChange={e => setAssetId(e.target.value)} className="field">
+            <option value="">— none —</option>
+            {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category (optional)</label>
+          <EntityCombobox
+            items={partCategories}
+            value={partCategoryId}
+            onChange={setPartCategoryId}
+            onCreate={async (name) => {
+              const cat = await api.partCategories.create(name)
+              setPartCategories(prev => [...prev, cat])
+              return cat
+            }}
+            placeholder="Search or create…"
+          />
+        </div>
+
+        <StoragePicker
+          value={{ locationId, shelfId, boxId }}
+          onChange={(s) => { setLocationId(s.locationId); setShelfId(s.shelfId); setBoxId(s.boxId) }}
+        />
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
 
