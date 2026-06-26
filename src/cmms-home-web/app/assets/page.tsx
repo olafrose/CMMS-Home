@@ -5,43 +5,53 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { Asset } from '@/lib/types'
 
-function FilterRow({ entries, active, onSelect }: {
+function FilterGroup({ label, entries, active, onSelect }: {
+  label: string
   entries: [string, string][]
   active: string | null
   onSelect: (id: string | null) => void
 }) {
   return (
-    <div className="flex gap-2 flex-wrap">
-      <button
-        onClick={() => onSelect(null)}
-        className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-          active === null
-            ? 'bg-blue-600 text-white'
-            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-        }`}
-      >
-        All
-      </button>
-      {entries.map(([id, name]) => (
-        <button
-          key={id}
-          onClick={() => onSelect(active === id ? null : id)}
-          className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-            active === id
-              ? 'bg-blue-600 text-white'
-              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-          }`}
-        >
-          {name}
-        </button>
-      ))}
+    <div className="flex items-start gap-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 pt-1.5 w-20 shrink-0">{label}</p>
+      <div className="flex gap-2 flex-wrap">
+        {entries.map(([id, name]) => (
+          <button
+            key={id}
+            onClick={() => onSelect(active === id ? null : id)}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+              active === id
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
     </div>
+  )
+}
+
+function ActiveChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="flex items-center gap-1 pl-3 pr-1.5 py-1 rounded-full text-sm font-medium bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+      {label}
+      <button
+        onClick={onClear}
+        aria-label={`Clear ${label} filter`}
+        className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 leading-none"
+      >
+        ×
+      </button>
+    </span>
   )
 }
 
 export default function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
+  const [showFilters, setShowFilters] = useState(false)
   const [activeLocation, setActiveLocation] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
@@ -72,6 +82,16 @@ export default function AssetsPage() {
     (!activeCategory || a.categoryId === activeCategory)
   )
 
+  const categoryName = categories.find(([id]) => id === activeCategory)?.[1]
+  const locationName = locations.find(([id]) => id === activeLocation)?.[1]
+  const activeCount = (activeCategory ? 1 : 0) + (activeLocation ? 1 : 0)
+  const hasFilterOptions = locations.length > 0 || categories.length > 0
+
+  function clearAll() {
+    setActiveCategory(null)
+    setActiveLocation(null)
+  }
+
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
       <div className="flex items-center justify-between mb-4">
@@ -84,13 +104,51 @@ export default function AssetsPage() {
         </Link>
       </div>
 
-      {(locations.length > 0 || categories.length > 0) && (
-        <div className="space-y-2 mb-4">
-          {categories.length > 0 && (
-            <FilterRow entries={categories} active={activeCategory} onSelect={setActiveCategory} />
-          )}
-          {locations.length > 0 && (
-            <FilterRow entries={locations} active={activeLocation} onSelect={setActiveLocation} />
+      {hasFilterOptions && (
+        <div className="mb-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowFilters(v => !v)}
+              aria-expanded={showFilters}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                showFilters || activeCount > 0
+                  ? 'border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              } bg-white dark:bg-slate-800`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
+              Filter
+              {activeCount > 0 && (
+                <span className="ml-0.5 min-w-5 h-5 px-1 flex items-center justify-center text-xs font-semibold rounded-full bg-blue-600 text-white">
+                  {activeCount}
+                </span>
+              )}
+            </button>
+
+            {activeCategory && categoryName && (
+              <ActiveChip label={categoryName} onClear={() => setActiveCategory(null)} />
+            )}
+            {activeLocation && locationName && (
+              <ActiveChip label={locationName} onClear={() => setActiveLocation(null)} />
+            )}
+            {activeCount > 0 && (
+              <button onClick={clearAll} className="text-sm text-slate-500 dark:text-slate-400 underline">
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {showFilters && (
+            <div className="mt-2 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 space-y-2">
+              {categories.length > 0 && (
+                <FilterGroup label="Category" entries={categories} active={activeCategory} onSelect={setActiveCategory} />
+              )}
+              {locations.length > 0 && (
+                <FilterGroup label="Location" entries={locations} active={activeLocation} onSelect={setActiveLocation} />
+              )}
+            </div>
           )}
         </div>
       )}
@@ -105,6 +163,12 @@ export default function AssetsPage() {
             <Link href="/assets/new" className="text-blue-500 underline">Add your first asset</Link>
           </p>
         </div>
+      )}
+
+      {!loading && assets.length > 0 && filtered.length === 0 && (
+        <p className="text-slate-500 dark:text-slate-400 text-sm py-8 text-center">
+          No assets match the active filters.
+        </p>
       )}
 
       <ul className="space-y-3">
