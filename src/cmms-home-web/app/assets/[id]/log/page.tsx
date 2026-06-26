@@ -17,13 +17,19 @@ export default function LogMaintenancePage() {
   const router = useRouter()
   const [type, setType] = useState('maintenance')
   const [note, setNote] = useState('')
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
     setSaving(true)
     try {
-      const event = await api.events.create({ assetId: id, type, note: note.trim() || undefined })
-      router.push(`/events/${event.id}/parts?asset_id=${id}`)
+      const event = await api.events.create({
+        assetId: id,
+        type,
+        note: note.trim() || undefined,
+        occurredAt: new Date(date).toISOString(),
+      })
+      router.push(`/events/${event.id}?asset_id=${id}`)
     } catch {
       setSaving(false)
     }
@@ -61,6 +67,11 @@ export default function LogMaintenancePage() {
           placeholder="What did you do?"
           className="field resize-none"
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date</label>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="field" />
       </div>
 
       <button

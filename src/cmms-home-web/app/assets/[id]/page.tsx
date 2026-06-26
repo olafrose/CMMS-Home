@@ -295,14 +295,17 @@ export default function AssetDetailPage() {
         ) : (
           <ul className="space-y-2">
             {events.map((e) => (
-              <li key={e.id} className={`flex items-start gap-3 ${card} px-4 py-3`}>
-                <span className={`mt-0.5 text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${eventTypeColor[e.type] ?? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                  {e.type}
-                </span>
-                <div className="flex-1 min-w-0">
-                  {e.note && <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{e.note}</p>}
-                  <p className="text-xs text-slate-400 dark:text-slate-500">{formatDate(e.createdAt)}</p>
-                </div>
+              <li key={e.id}>
+                <Link href={`/events/${e.id}?asset_id=${id}`} className={`flex items-start gap-3 ${card} px-4 py-3`}>
+                  <span className={`mt-0.5 text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${eventTypeColor[e.type] ?? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                    {e.type}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    {e.note && <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{e.note}</p>}
+                    <p className="text-xs text-slate-400 dark:text-slate-500">{formatDate(e.createdAt)}</p>
+                  </div>
+                  <span className="text-slate-300 dark:text-slate-600 text-lg self-center">›</span>
+                </Link>
               </li>
             ))}
           </ul>

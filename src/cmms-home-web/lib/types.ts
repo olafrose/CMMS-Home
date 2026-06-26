@@ -91,6 +91,13 @@ export interface CreateEventDto {
   type: string
   note?: string
   photoUrl?: string
+  occurredAt?: string
+}
+
+export interface UpdateEventDto {
+  type: string
+  note?: string
+  occurredAt?: string
 }
 
 export interface CreateRuleDto {

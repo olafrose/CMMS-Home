@@ -1,6 +1,6 @@
 import type {
   Asset, Category, Location, MaintenanceEvent, MaintenanceRule, Part, PartUsage, Shelf, StorageBox,
-  CreateAssetDto, CreateEventDto, CreateRuleDto, UpdateRuleDto,
+  CreateAssetDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
 } from './types'
 
 const API_BASE = '/api'
@@ -32,6 +32,8 @@ export const api = {
     get: (id: string) => request<MaintenanceEvent>(`/events/${id}`),
     create: (dto: CreateEventDto) =>
       request<MaintenanceEvent>('/events', { method: 'POST', body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateEventDto) =>
+      request<MaintenanceEvent>(`/events/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
   },
   rules: {
     list: (assetId?: string) =>
