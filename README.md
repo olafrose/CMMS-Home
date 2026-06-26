@@ -105,3 +105,7 @@ OBD2/vehicle diagnostics, operating-hours tracking, and AI features.
 
 Full requirements: [`home_maintenance_mvp_requirements.md`](home_maintenance_mvp_requirements.md).
 Contributor/architecture notes for AI tooling: [`CLAUDE.md`](CLAUDE.md).
+
+## License
+
+[MIT](LICENSE) © Olaf Rose
