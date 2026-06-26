@@ -10,16 +10,26 @@ import type { Asset, Part, PartCategory, PartUsage } from '@/lib/types'
 
 const UNIT_SUGGESTIONS = ['each', 'L', 'mL', 'kg', 'g', 'm', 'cm', 'pack']
 
-function storageBreadcrumb(part: Part): string {
+// Breadcrumb segments; box/shelf link to their contents pages, location is plain text.
+function storageSegments(part: Part): { label: string; href?: string }[] {
   if (part.box) {
-    const shelf = part.box.shelf
-    if (shelf) return `${part.box.name} › ${shelf.name} › ${shelf.location.name}`
-    if (part.box.location) return `${part.box.name} › ${part.box.location.name}`
-    return part.box.name
+    const segs: { label: string; href?: string }[] = [{ label: part.box.name, href: `/storage/box/${part.boxId}` }]
+    if (part.box.shelf) {
+      segs.push({ label: part.box.shelf.name, href: `/storage/shelf/${part.box.shelfId}` })
+      segs.push({ label: part.box.shelf.location.name })
+    } else if (part.box.location) {
+      segs.push({ label: part.box.location.name })
+    }
+    return segs
   }
-  if (part.shelf) return `${part.shelf.name} › ${part.shelf.location.name}`
-  if (part.location) return part.location.name
-  return 'No location'
+  if (part.shelf) {
+    return [
+      { label: part.shelf.name, href: `/storage/shelf/${part.shelfId}` },
+      { label: part.shelf.location.name },
+    ]
+  }
+  if (part.location) return [{ label: part.location.name }]
+  return [{ label: 'No location' }]
 }
 
 function formatDate(iso: string) {
@@ -201,7 +211,16 @@ export default function PartDetailPage() {
         <div className={`${card} px-4 py-3 space-y-2`}>
           <div>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Stored at</p>
-            <p className="text-sm text-slate-700 dark:text-slate-200">{storageBreadcrumb(part)}</p>
+            <p className="text-sm">
+              {storageSegments(part).map((s, i) => (
+                <span key={i}>
+                  {i > 0 && <span className="text-slate-300 dark:text-slate-600"> › </span>}
+                  {s.href
+                    ? <Link href={s.href} className="text-blue-600 dark:text-blue-400">{s.label}</Link>
+                    : <span className="text-slate-700 dark:text-slate-200">{s.label}</span>}
+                </span>
+              ))}
+            </p>
           </div>
           {part.asset && (
             <div>
