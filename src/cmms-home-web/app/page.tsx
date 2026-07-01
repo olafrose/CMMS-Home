@@ -25,12 +25,28 @@ function daysRelative(rule: MaintenanceRule): number {
   return Math.round((due.getTime() - Date.now()) / 86_400_000)
 }
 
+// The instant the backend flags the rule Overdue: the due date plus the grace window
+// for DueDate schedules (Interval schedules have no window, so it's the due date itself).
+function overdueDate(rule: MaintenanceRule): Date | null {
+  const due = dueDate(rule)
+  if (!due) return null
+  if (rule.scheduleType === 'DueDate' && rule.dueWindowValue > 0)
+    return addInterval(due, rule.dueWindowValue, rule.dueWindowUnit)
+  return due
+}
+
 function dueLabel(rule: MaintenanceRule): string {
   const due = dueDate(rule)
   if (!due) return rule.scheduleType === 'DueDate' ? 'No due date set' : 'Never done — do it now'
+  // Overdue is counted from the end of the grace window, not the due date itself.
+  if (rule.status === 'Overdue') {
+    const over = overdueDate(rule) ?? due
+    const d = Math.max(1, Math.round((Date.now() - over.getTime()) / 86_400_000))
+    return `${d} day${d !== 1 ? 's' : ''} overdue`
+  }
   const d = daysRelative(rule)
-  // Within a due-date grace window the backend reports Due (not Overdue), so don't say "overdue".
-  if (d < 0) return rule.status === 'Due' ? 'Due now' : `${Math.abs(d)} day${Math.abs(d) !== 1 ? 's' : ''} overdue`
+  // Past the due date but still within the grace window: backend reports Due.
+  if (d < 0) return 'Due now'
   if (d === 0) return 'Due today'
   return `Due in ${d} day${d !== 1 ? 's' : ''}`
 }
