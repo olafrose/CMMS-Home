@@ -25,6 +25,13 @@ export default function CategoriesPage() {
         api={api.partCategories}
         deleteConfirm={name => `Delete "${name}"? It will be removed from all parts assigned to it.`}
       />
+
+      <ManagedNameList
+        title="Tool categories"
+        addPlaceholder="New tool category"
+        api={api.toolCategories}
+        deleteConfirm={name => `Delete "${name}"? It will be removed from all tools assigned to it.`}
+      />
     </div>
   )
 }

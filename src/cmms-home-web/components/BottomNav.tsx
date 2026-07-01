@@ -13,6 +13,7 @@ const tabs = [
 ]
 
 const manageLinks = [
+  { href: '/tools', label: 'Tools', icon: '🛠️' },
   { href: '/locations', label: 'Locations', icon: '📍' },
   { href: '/categories', label: 'Categories', icon: '🏷️' },
   { href: '/storage', label: 'Storage', icon: '🗄️' },

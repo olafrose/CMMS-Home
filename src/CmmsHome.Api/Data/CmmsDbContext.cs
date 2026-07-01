@@ -15,6 +15,9 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<Part> Parts => Set<Part>();
     public DbSet<PartUsage> PartUsages => Set<PartUsage>();
     public DbSet<PartCategory> PartCategories => Set<PartCategory>();
+    public DbSet<Tool> Tools => Set<Tool>();
+    public DbSet<ToolCategory> ToolCategories => Set<ToolCategory>();
+    public DbSet<ToolLoan> ToolLoans => Set<ToolLoan>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -129,5 +132,45 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .WithMany()
             .HasForeignKey(u => u.PartId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Tool>()
+            .HasOne(t => t.Box)
+            .WithMany()
+            .HasForeignKey(t => t.BoxId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Tool>()
+            .HasOne(t => t.Shelf)
+            .WithMany()
+            .HasForeignKey(t => t.ShelfId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Tool>()
+            .HasOne(t => t.Location)
+            .WithMany()
+            .HasForeignKey(t => t.LocationId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Tool>()
+            .HasOne(t => t.Asset)
+            .WithMany()
+            .HasForeignKey(t => t.AssetId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Tool>()
+            .HasOne(t => t.ToolCategory)
+            .WithMany()
+            .HasForeignKey(t => t.ToolCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Tool>()
+            .HasMany(t => t.Loans)
+            .WithOne(l => l.Tool)
+            .HasForeignKey(l => l.ToolId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ToolLoan>()
+            .Property(l => l.LoanedAt)
+            .HasDefaultValueSql("now()");
     }
 }

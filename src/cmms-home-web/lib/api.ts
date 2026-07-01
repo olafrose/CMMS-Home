@@ -1,5 +1,6 @@
 import type {
   Asset, Category, Location, MaintenanceEvent, MaintenanceRule, Part, PartCategory, PartUsage, Shelf, StorageBox,
+  Tool, ToolCategory,
   CreateAssetDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
 } from './types'
 
@@ -120,6 +121,43 @@ export const api = {
       request<PartCategory>(`/part-categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
     delete: (id: string) =>
       request<void>(`/part-categories/${id}`, { method: 'DELETE' }),
+  },
+  tools: {
+    list: (opts?: { onLoan?: boolean; assetId?: string; boxId?: string; shelfId?: string }) => {
+      const params = new URLSearchParams()
+      if (opts?.onLoan) params.set('on_loan', 'true')
+      if (opts?.assetId) params.set('asset_id', opts.assetId)
+      if (opts?.boxId) params.set('box_id', opts.boxId)
+      if (opts?.shelfId) params.set('shelf_id', opts.shelfId)
+      const qs = params.size ? `?${params}` : ''
+      return request<Tool[]>(`/tools${qs}`)
+    },
+    get: (id: string) => request<Tool>(`/tools/${id}`),
+    create: (dto: {
+      name: string; notes?: string
+      assetId?: string; toolCategoryId?: string
+      boxId?: string; shelfId?: string; locationId?: string
+    }) => request<Tool>('/tools', { method: 'POST', body: JSON.stringify(dto) }),
+    update: (id: string, dto: {
+      name: string; notes?: string
+      assetId?: string; toolCategoryId?: string
+      boxId?: string; shelfId?: string; locationId?: string
+    }) => request<Tool>(`/tools/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
+    delete: (id: string) =>
+      request<void>(`/tools/${id}`, { method: 'DELETE' }),
+    checkout: (id: string, borrower: string) =>
+      request<Tool>(`/tools/${id}/checkout`, { method: 'POST', body: JSON.stringify({ borrower }) }),
+    return: (id: string) =>
+      request<Tool>(`/tools/${id}/return`, { method: 'POST' }),
+  },
+  toolCategories: {
+    list: () => request<ToolCategory[]>('/tool-categories'),
+    create: (name: string) =>
+      request<ToolCategory>('/tool-categories', { method: 'POST', body: JSON.stringify({ name }) }),
+    update: (id: string, name: string) =>
+      request<ToolCategory>(`/tool-categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+    delete: (id: string) =>
+      request<void>(`/tool-categories/${id}`, { method: 'DELETE' }),
   },
   partUsages: {
     list: (eventId: string) =>

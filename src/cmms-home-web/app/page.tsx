@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Asset, MaintenanceEvent, MaintenanceRule, Part } from '@/lib/types'
+import type { Asset, MaintenanceEvent, MaintenanceRule, Part, Tool } from '@/lib/types'
 
 function addInterval(date: Date, value: number, unit: MaintenanceRule['intervalUnit']): Date {
   const d = new Date(date)
@@ -44,15 +44,17 @@ export default function DashboardPage() {
   const [rules, setRules] = useState<MaintenanceRule[]>([])
   const [events, setEvents] = useState<MaintenanceEvent[]>([])
   const [lowStockParts, setLowStockParts] = useState<Part[]>([])
+  const [loanedTools, setLoanedTools] = useState<Tool[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([api.assets.list(), api.rules.list(), api.events.list(), api.parts.list({ lowStock: true })])
-      .then(([a, r, e, p]) => {
+    Promise.all([api.assets.list(), api.rules.list(), api.events.list(), api.parts.list({ lowStock: true }), api.tools.list({ onLoan: true })])
+      .then(([a, r, e, p, t]) => {
         setAssets(Object.fromEntries(a.map((x) => [x.id, x])))
         setRules(r.sort((a, b) => daysRelative(a) - daysRelative(b)))
         setEvents(e.slice(0, 5))
         setLowStockParts(p)
+        setLoanedTools(t)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -166,6 +168,36 @@ export default function DashboardPage() {
                   </Link>
                 </li>
               ))}
+            </ul>
+          </section>
+        )}
+
+        {/* Tools out on loan */}
+        {!loading && loanedTools.length > 0 && (
+          <section>
+            <h2 className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">Out on loan</h2>
+            <ul className="space-y-2">
+              {loanedTools.map((t) => {
+                const loan = t.loans?.find((l) => !l.returnedAt)
+                return (
+                  <li key={t.id}>
+                    <Link
+                      href={`/tools/${t.id}`}
+                      className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3"
+                    >
+                      <div>
+                        <p className="font-medium text-slate-800 dark:text-slate-100">{t.name}</p>
+                        {loan && (
+                          <p className="text-xs text-amber-700 dark:text-amber-400">
+                            {loan.borrower} · since {formatDate(loan.loanedAt)}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-slate-400 dark:text-slate-500 text-lg">›</span>
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           </section>
         )}

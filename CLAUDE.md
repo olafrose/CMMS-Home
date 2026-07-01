@@ -105,6 +105,8 @@ Categories:  CRUD /categories
 Shelves:     CRUD /shelves   |  Boxes: CRUD /boxes
 Parts:       POST/GET /parts  |  GET/PUT/DELETE /parts/{id}
 PartUsages:  POST/GET /part-usages  |  DELETE /part-usages/{id}
+Tools:       POST/GET /tools  |  GET/PUT/DELETE /tools/{id}  |  POST /tools/{id}/checkout, /tools/{id}/return
+ToolCategories: CRUD /tool-categories
 ```
 
 ## Key UX Constraints
@@ -136,6 +138,30 @@ Shelf      { Id, Name, LocationId }
 
 `Category` and `Location` were also promoted from free-text asset fields to first-class
 entities (with `/categories` and `/locations` management pages).
+
+### Tools (non-consumable items)
+
+The storage hierarchy is also reused to track **non-consumable items** (hand/power tools,
+etc.) — where each lives, plus category, linked asset, notes, and loan status. `Tool` is a
+**sibling to `Part`**, not a variant of it: it has no `Quantity`/`Unit`/`MinQuantity` and is
+never consumed. This keeps both tables free of dead columns (a `Kind` flag on `Part` was
+rejected for that reason; table-per-type inheritance was rejected to avoid restructuring
+existing `Parts` data).
+
+```
+Tool         { Id, Name*, Notes?, AssetId?, ToolCategoryId?, BoxId? | ShelfId? | LocationId?, Loans[] }
+ToolCategory { Id, Name* }                       # separate taxonomy, mirrors PartCategory
+ToolLoan     { Id, ToolId, Borrower*, LoanedAt (default now()), ReturnedAt? }
+```
+
+- A tool is **currently on loan** iff it has a `ToolLoan` with `ReturnedAt == null`.
+  `GET /tools` uses a filtered include so `Tool.Loans` returns only the open loan (0 or 1).
+- Checkout (`POST /tools/{id}/checkout` `{ borrower }`) rejects if already out; return
+  (`POST /tools/{id}/return`) stamps `ReturnedAt`.
+- Storage contents view (`/storage/{type}/{id}`) and box/shelf QR pages list tools alongside
+  parts. Dashboard surfaces tools that are out on loan.
+- Endpoints: `ToolEndpoints`, `ToolCategoryEndpoints`. Frontend: `/tools`, `/tools/new`,
+  `/tools/{id}` — reuse `StoragePicker` + `EntityCombobox`.
 
 ## Out of Scope (MVP)
 

@@ -59,6 +59,36 @@ export interface PartUsage {
   quantityUsed: number
 }
 
+export interface ToolCategory {
+  id: string
+  name: string
+}
+
+export interface ToolLoan {
+  id: string
+  toolId: string
+  borrower: string
+  loanedAt: string
+  returnedAt?: string
+}
+
+export interface Tool {
+  id: string
+  name: string
+  notes?: string
+  assetId?: string
+  asset?: Asset
+  toolCategoryId?: string
+  toolCategory?: ToolCategory
+  boxId?: string
+  box?: StorageBox
+  shelfId?: string
+  shelf?: Shelf
+  locationId?: string
+  location?: Location
+  loans?: ToolLoan[]
+}
+
 export interface Asset {
   id: string
   name: string

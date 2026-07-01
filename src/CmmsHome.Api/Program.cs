@@ -9,7 +9,11 @@ builder.Services.AddDbContext<CmmsDbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.ConfigureHttpJsonOptions(o =>
-    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+{
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    // Tool ↔ ToolLoan is a bidirectional relationship; break the cycle when serializing.
+    o.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -35,5 +39,7 @@ app.MapBoxEndpoints();
 app.MapPartEndpoints();
 app.MapPartUsageEndpoints();
 app.MapPartCategoryEndpoints();
+app.MapToolEndpoints();
+app.MapToolCategoryEndpoints();
 
 app.Run();
