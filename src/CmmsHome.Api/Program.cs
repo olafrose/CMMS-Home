@@ -11,7 +11,8 @@ builder.Services.AddDbContext<CmmsDbContext>(opt =>
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-    // Tool ↔ ToolLoan is a bidirectional relationship; break the cycle when serializing.
+    // Equipment ↔ EquipmentLoan (and StorageLocation self-refs) are bidirectional;
+    // break cycles when serializing.
     o.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
 
@@ -29,17 +30,13 @@ app.UseSwaggerUI();
 using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<CmmsDbContext>().Database.Migrate();
 
-app.MapAssetEndpoints();
+app.MapEquipmentEndpoints();
 app.MapEventEndpoints();
 app.MapRuleEndpoints();
-app.MapLocationEndpoints();
+app.MapStorageLocationEndpoints();
 app.MapCategoryEndpoints();
-app.MapShelfEndpoints();
-app.MapBoxEndpoints();
 app.MapPartEndpoints();
 app.MapPartUsageEndpoints();
 app.MapPartCategoryEndpoints();
-app.MapToolEndpoints();
-app.MapToolCategoryEndpoints();
 
 app.Run();

@@ -1,7 +1,7 @@
 import type {
-  Asset, Category, Location, MaintenanceEvent, MaintenanceRule, Part, PartCategory, PartUsage, Shelf, StorageBox,
-  Tool, ToolCategory,
-  CreateAssetDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
+  Category, Equipment, MaintenanceEvent, MaintenanceRule, Part, PartCategory, PartUsage, StorageLocation,
+  StorageLocationContents,
+  CreateEquipmentDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
 } from './types'
 
 const API_BASE = '/api'
@@ -17,19 +17,31 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  assets: {
-    list: () => request<Asset[]>('/assets'),
-    get: (id: string) => request<Asset>(`/assets/${id}`),
-    create: (dto: CreateAssetDto) =>
-      request<Asset>('/assets', { method: 'POST', body: JSON.stringify(dto) }),
-    update: (id: string, dto: CreateAssetDto) =>
-      request<Asset>(`/assets/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
+  equipment: {
+    list: (opts?: { kind?: 'asset' | 'tool'; locationId?: string; onLoan?: boolean; maintained?: boolean }) => {
+      const params = new URLSearchParams()
+      if (opts?.kind) params.set('kind', opts.kind)
+      if (opts?.locationId) params.set('location_id', opts.locationId)
+      if (opts?.onLoan) params.set('on_loan', 'true')
+      if (opts?.maintained) params.set('maintained', 'true')
+      const qs = params.size ? `?${params}` : ''
+      return request<Equipment[]>(`/equipment${qs}`)
+    },
+    get: (id: string) => request<Equipment>(`/equipment/${id}`),
+    create: (dto: CreateEquipmentDto) =>
+      request<Equipment>('/equipment', { method: 'POST', body: JSON.stringify(dto) }),
+    update: (id: string, dto: CreateEquipmentDto) =>
+      request<Equipment>(`/equipment/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
     delete: (id: string) =>
-      request<void>(`/assets/${id}`, { method: 'DELETE' }),
+      request<void>(`/equipment/${id}`, { method: 'DELETE' }),
+    checkout: (id: string, borrower: string) =>
+      request<Equipment>(`/equipment/${id}/checkout`, { method: 'POST', body: JSON.stringify({ borrower }) }),
+    return: (id: string) =>
+      request<Equipment>(`/equipment/${id}/return`, { method: 'POST' }),
   },
   events: {
-    list: (assetId?: string) =>
-      request<MaintenanceEvent[]>(`/events${assetId ? `?asset_id=${assetId}` : ''}`),
+    list: (equipmentId?: string) =>
+      request<MaintenanceEvent[]>(`/events${equipmentId ? `?equipment_id=${equipmentId}` : ''}`),
     get: (id: string) => request<MaintenanceEvent>(`/events/${id}`),
     create: (dto: CreateEventDto) =>
       request<MaintenanceEvent>('/events', { method: 'POST', body: JSON.stringify(dto) }),
@@ -37,8 +49,8 @@ export const api = {
       request<MaintenanceEvent>(`/events/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
   },
   rules: {
-    list: (assetId?: string) =>
-      request<MaintenanceRule[]>(`/rules${assetId ? `?asset_id=${assetId}` : ''}`),
+    list: (equipmentId?: string) =>
+      request<MaintenanceRule[]>(`/rules${equipmentId ? `?equipment_id=${equipmentId}` : ''}`),
     create: (dto: CreateRuleDto) =>
       request<MaintenanceRule>('/rules', { method: 'POST', body: JSON.stringify(dto) }),
     update: (id: string, dto: UpdateRuleDto) =>
@@ -46,14 +58,22 @@ export const api = {
     delete: (id: string) =>
       request<void>(`/rules/${id}`, { method: 'DELETE' }),
   },
-  locations: {
-    list: () => request<Location[]>('/locations'),
-    create: (name: string) =>
-      request<Location>('/locations', { method: 'POST', body: JSON.stringify({ name }) }),
-    update: (id: string, name: string) =>
-      request<Location>(`/locations/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  storageLocations: {
+    list: (opts?: { parentId?: string; q?: string }) => {
+      const params = new URLSearchParams()
+      if (opts?.parentId) params.set('parent_id', opts.parentId)
+      if (opts?.q) params.set('q', opts.q)
+      const qs = params.size ? `?${params}` : ''
+      return request<StorageLocation[]>(`/storage-locations${qs}`)
+    },
+    get: (id: string) => request<StorageLocation>(`/storage-locations/${id}`),
+    contents: (id: string) => request<StorageLocationContents>(`/storage-locations/${id}/contents`),
+    create: (name: string, parentId?: string, icon?: string) =>
+      request<StorageLocation>('/storage-locations', { method: 'POST', body: JSON.stringify({ name, parentId, icon }) }),
+    update: (id: string, name: string, parentId?: string, icon?: string) =>
+      request<StorageLocation>(`/storage-locations/${id}`, { method: 'PUT', body: JSON.stringify({ name, parentId, icon }) }),
     delete: (id: string) =>
-      request<void>(`/locations/${id}`, { method: 'DELETE' }),
+      request<void>(`/storage-locations/${id}`, { method: 'DELETE' }),
   },
   categories: {
     list: () => request<Category[]>('/categories'),
@@ -64,51 +84,23 @@ export const api = {
     delete: (id: string) =>
       request<void>(`/categories/${id}`, { method: 'DELETE' }),
   },
-  shelves: {
-    list: (locationId?: string) =>
-      request<Shelf[]>(`/shelves${locationId ? `?location_id=${locationId}` : ''}`),
-    create: (name: string, locationId: string) =>
-      request<Shelf>('/shelves', { method: 'POST', body: JSON.stringify({ name, locationId }) }),
-    update: (id: string, name: string, locationId: string) =>
-      request<Shelf>(`/shelves/${id}`, { method: 'PUT', body: JSON.stringify({ name, locationId }) }),
-    delete: (id: string) =>
-      request<void>(`/shelves/${id}`, { method: 'DELETE' }),
-  },
-  boxes: {
-    list: (opts?: { shelfId?: string; locationId?: string }) => {
-      const params = new URLSearchParams()
-      if (opts?.shelfId) params.set('shelf_id', opts.shelfId)
-      if (opts?.locationId) params.set('location_id', opts.locationId)
-      const qs = params.size ? `?${params}` : ''
-      return request<StorageBox[]>(`/boxes${qs}`)
-    },
-    create: (name: string, shelfId?: string, locationId?: string) =>
-      request<StorageBox>('/boxes', { method: 'POST', body: JSON.stringify({ name, shelfId, locationId }) }),
-    update: (id: string, name: string, shelfId?: string, locationId?: string) =>
-      request<StorageBox>(`/boxes/${id}`, { method: 'PUT', body: JSON.stringify({ name, shelfId, locationId }) }),
-    delete: (id: string) =>
-      request<void>(`/boxes/${id}`, { method: 'DELETE' }),
-  },
   parts: {
-    list: (opts?: { lowStock?: boolean; assetId?: string; boxId?: string; shelfId?: string }) => {
+    list: (opts?: { lowStock?: boolean; equipmentId?: string; locationId?: string }) => {
       const params = new URLSearchParams()
       if (opts?.lowStock) params.set('low_stock', 'true')
-      if (opts?.assetId) params.set('asset_id', opts.assetId)
-      if (opts?.boxId) params.set('box_id', opts.boxId)
-      if (opts?.shelfId) params.set('shelf_id', opts.shelfId)
+      if (opts?.equipmentId) params.set('equipment_id', opts.equipmentId)
+      if (opts?.locationId) params.set('location_id', opts.locationId)
       const qs = params.size ? `?${params}` : ''
       return request<Part[]>(`/parts${qs}`)
     },
     get: (id: string) => request<Part>(`/parts/${id}`),
     create: (dto: {
       name: string; quantity: number; unit: string; minQuantity?: number
-      assetId?: string; partCategoryId?: string
-      boxId?: string; shelfId?: string; locationId?: string
+      equipmentId?: string; partCategoryId?: string; storageLocationId?: string
     }) => request<Part>('/parts', { method: 'POST', body: JSON.stringify(dto) }),
     update: (id: string, dto: {
       name: string; quantity: number; unit: string; minQuantity?: number
-      assetId?: string; partCategoryId?: string
-      boxId?: string; shelfId?: string; locationId?: string
+      equipmentId?: string; partCategoryId?: string; storageLocationId?: string
     }) => request<Part>(`/parts/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
     delete: (id: string) =>
       request<void>(`/parts/${id}`, { method: 'DELETE' }),
@@ -121,43 +113,6 @@ export const api = {
       request<PartCategory>(`/part-categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
     delete: (id: string) =>
       request<void>(`/part-categories/${id}`, { method: 'DELETE' }),
-  },
-  tools: {
-    list: (opts?: { onLoan?: boolean; assetId?: string; boxId?: string; shelfId?: string }) => {
-      const params = new URLSearchParams()
-      if (opts?.onLoan) params.set('on_loan', 'true')
-      if (opts?.assetId) params.set('asset_id', opts.assetId)
-      if (opts?.boxId) params.set('box_id', opts.boxId)
-      if (opts?.shelfId) params.set('shelf_id', opts.shelfId)
-      const qs = params.size ? `?${params}` : ''
-      return request<Tool[]>(`/tools${qs}`)
-    },
-    get: (id: string) => request<Tool>(`/tools/${id}`),
-    create: (dto: {
-      name: string; notes?: string
-      assetId?: string; toolCategoryId?: string
-      boxId?: string; shelfId?: string; locationId?: string
-    }) => request<Tool>('/tools', { method: 'POST', body: JSON.stringify(dto) }),
-    update: (id: string, dto: {
-      name: string; notes?: string
-      assetId?: string; toolCategoryId?: string
-      boxId?: string; shelfId?: string; locationId?: string
-    }) => request<Tool>(`/tools/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
-    delete: (id: string) =>
-      request<void>(`/tools/${id}`, { method: 'DELETE' }),
-    checkout: (id: string, borrower: string) =>
-      request<Tool>(`/tools/${id}/checkout`, { method: 'POST', body: JSON.stringify({ borrower }) }),
-    return: (id: string) =>
-      request<Tool>(`/tools/${id}/return`, { method: 'POST' }),
-  },
-  toolCategories: {
-    list: () => request<ToolCategory[]>('/tool-categories'),
-    create: (name: string) =>
-      request<ToolCategory>('/tool-categories', { method: 'POST', body: JSON.stringify({ name }) }),
-    update: (id: string, name: string) =>
-      request<ToolCategory>(`/tool-categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
-    delete: (id: string) =>
-      request<void>(`/tool-categories/${id}`, { method: 'DELETE' }),
   },
   partUsages: {
     list: (eventId: string) =>

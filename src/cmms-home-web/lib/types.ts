@@ -1,31 +1,28 @@
 export type MaintenanceStatus = 'Ok' | 'Upcoming' | 'Due' | 'Overdue'
 export type IntervalUnit = 'Days' | 'Weeks' | 'Months' | 'Years'
 export type ScheduleType = 'Interval' | 'DueDate'
+// Lens for the two list views (serialized PascalCase by the API's enum converter).
+export type EquipmentKind = 'Asset' | 'Tool' | 'Both'
 
-export interface Location {
+// Unified, self-referencing storage hierarchy (Room > Shelf > Box, any nesting).
+export interface StorageLocation {
   id: string
   name: string
+  icon?: string
+  parentId?: string
+}
+
+export interface StorageLocationContents {
+  location: StorageLocation
+  ancestors: StorageLocation[]
+  children: StorageLocation[]
+  parts: Part[]
+  equipment: Equipment[]
 }
 
 export interface Category {
   id: string
   name: string
-}
-
-export interface Shelf {
-  id: string
-  name: string
-  locationId: string
-  location: Location
-}
-
-export interface StorageBox {
-  id: string
-  name: string
-  shelfId?: string
-  shelf?: Shelf
-  locationId?: string
-  location?: Location
 }
 
 export interface PartCategory {
@@ -39,16 +36,12 @@ export interface Part {
   quantity: number
   unit: string
   minQuantity?: number
-  assetId?: string
-  asset?: Asset
+  equipmentId?: string
+  equipment?: Equipment
   partCategoryId?: string
   partCategory?: PartCategory
-  boxId?: string
-  box?: StorageBox
-  shelfId?: string
-  shelf?: Shelf
-  locationId?: string
-  location?: Location
+  storageLocationId?: string
+  storageLocation?: StorageLocation
 }
 
 export interface PartUsage {
@@ -59,50 +52,34 @@ export interface PartUsage {
   quantityUsed: number
 }
 
-export interface ToolCategory {
+export interface EquipmentLoan {
   id: string
-  name: string
-}
-
-export interface ToolLoan {
-  id: string
-  toolId: string
+  equipmentId: string
   borrower: string
   loanedAt: string
   returnedAt?: string
 }
 
-export interface Tool {
+// A durable item (former Asset + Tool). Any item can be located, maintained, and lent.
+export interface Equipment {
   id: string
   name: string
-  notes?: string
-  assetId?: string
-  asset?: Asset
-  toolCategoryId?: string
-  toolCategory?: ToolCategory
-  boxId?: string
-  box?: StorageBox
-  shelfId?: string
-  shelf?: Shelf
-  locationId?: string
-  location?: Location
-  loans?: ToolLoan[]
-}
-
-export interface Asset {
-  id: string
-  name: string
+  kind: EquipmentKind
   categoryId?: string
   category?: Category
-  locationId?: string
-  location?: Location
+  storageLocationId?: string
+  storageLocation?: StorageLocation
   imageUrl?: string
+  notes?: string
+  usedOnEquipmentId?: string
+  usedOnEquipment?: Equipment
   createdAt: string
+  loans?: EquipmentLoan[]
 }
 
 export interface MaintenanceEvent {
   id: string
-  assetId: string
+  equipmentId: string
   type: string
   note?: string
   photoUrl?: string
@@ -111,7 +88,7 @@ export interface MaintenanceEvent {
 
 export interface MaintenanceRule {
   id: string
-  assetId: string
+  equipmentId: string
   name?: string
   scheduleType: ScheduleType
   intervalValue: number
@@ -125,15 +102,18 @@ export interface MaintenanceRule {
   status: MaintenanceStatus
 }
 
-export interface CreateAssetDto {
+export interface CreateEquipmentDto {
   name: string
+  kind: EquipmentKind
   categoryId?: string
-  locationId?: string
+  storageLocationId?: string
   imageUrl?: string
+  notes?: string
+  usedOnEquipmentId?: string
 }
 
 export interface CreateEventDto {
-  assetId: string
+  equipmentId: string
   type: string
   note?: string
   photoUrl?: string
@@ -147,7 +127,7 @@ export interface UpdateEventDto {
 }
 
 export interface CreateRuleDto {
-  assetId: string
+  equipmentId: string
   name?: string
   scheduleType: ScheduleType
   intervalValue: number

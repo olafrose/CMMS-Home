@@ -5,32 +5,11 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import EntityCombobox from '@/components/EntityCombobox'
-import StoragePicker from '@/components/StoragePicker'
-import type { Asset, Part, PartCategory, PartUsage } from '@/lib/types'
+import StorageLocationPicker from '@/components/StorageLocationPicker'
+import { locationPath } from '@/lib/storage'
+import type { Equipment, Part, PartCategory, PartUsage, StorageLocation } from '@/lib/types'
 
 const UNIT_SUGGESTIONS = ['each', 'L', 'mL', 'kg', 'g', 'm', 'cm', 'pack']
-
-// Breadcrumb segments; box/shelf link to their contents pages, location is plain text.
-function storageSegments(part: Part): { label: string; href?: string }[] {
-  if (part.box) {
-    const segs: { label: string; href?: string }[] = [{ label: part.box.name, href: `/storage/box/${part.boxId}` }]
-    if (part.box.shelf) {
-      segs.push({ label: part.box.shelf.name, href: `/storage/shelf/${part.box.shelfId}` })
-      segs.push({ label: part.box.shelf.location.name })
-    } else if (part.box.location) {
-      segs.push({ label: part.box.location.name })
-    }
-    return segs
-  }
-  if (part.shelf) {
-    return [
-      { label: part.shelf.name, href: `/storage/shelf/${part.shelfId}` },
-      { label: part.shelf.location.name },
-    ]
-  }
-  if (part.location) return [{ label: part.location.name }]
-  return [{ label: 'No location' }]
-}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
@@ -46,27 +25,24 @@ export default function PartDetailPage() {
   const [name, setName] = useState('')
   const [unit, setUnit] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
-  const [assetId, setAssetId] = useState('')
+  const [equipmentId, setEquipmentId] = useState('')
   const [partCategoryId, setPartCategoryId] = useState<string | null>(null)
-  const [locationId, setLocationId] = useState('')
-  const [shelfId, setShelfId] = useState('')
-  const [boxId, setBoxId] = useState('')
-  const [assets, setAssets] = useState<Asset[]>([])
+  const [storageLocationId, setStorageLocationId] = useState<string | null>(null)
+  const [equipment, setEquipment] = useState<Equipment[]>([])
   const [partCategories, setPartCategories] = useState<PartCategory[]>([])
+  const [locations, setLocations] = useState<StorageLocation[]>([])
   const [saving, setSaving] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
 
   useEffect(() => {
-    Promise.all([api.parts.get(id), api.partUsages.list(id), api.assets.list(), api.partCategories.list()])
-      .then(([p, u, asts, cats]) => {
-        setPart(p); setUsages(u); setAssets(asts); setPartCategories(cats)
+    Promise.all([api.parts.get(id), api.partUsages.list(id), api.equipment.list(), api.partCategories.list(), api.storageLocations.list()])
+      .then(([p, u, eq, cats, locs]) => {
+        setPart(p); setUsages(u); setEquipment(eq); setPartCategories(cats); setLocations(locs)
         setName(p.name); setUnit(p.unit)
         setMinQuantity(p.minQuantity != null ? String(p.minQuantity) : '')
-        setAssetId(p.assetId ?? '')
+        setEquipmentId(p.equipmentId ?? '')
         setPartCategoryId(p.partCategoryId ?? null)
-        setLocationId(p.locationId ?? p.shelf?.locationId ?? p.box?.shelf?.locationId ?? p.box?.locationId ?? '')
-        setShelfId(p.shelfId ?? p.box?.shelfId ?? '')
-        setBoxId(p.boxId ?? '')
+        setStorageLocationId(p.storageLocationId ?? null)
       })
       .finally(() => setLoading(false))
   }, [id])
@@ -78,11 +54,9 @@ export default function PartDetailPage() {
       const updated = await api.parts.update(id, {
         name: name.trim(), quantity: part.quantity, unit: unit.trim(),
         minQuantity: minQuantity ? Number(minQuantity) : undefined,
-        assetId: assetId || undefined,
+        equipmentId: equipmentId || undefined,
         partCategoryId: partCategoryId || undefined,
-        boxId: boxId || undefined,
-        shelfId: !boxId && shelfId ? shelfId : undefined,
-        locationId: !boxId && !shelfId && locationId ? locationId : undefined,
+        storageLocationId: storageLocationId || undefined,
       })
       setPart(updated); setEditing(false)
     } finally { setSaving(false) }
@@ -95,8 +69,8 @@ export default function PartDetailPage() {
       const updated = await api.parts.update(id, {
         name: part.name, quantity: part.quantity + delta, unit: part.unit,
         minQuantity: part.minQuantity ?? undefined,
-        assetId: part.assetId, partCategoryId: part.partCategoryId,
-        boxId: part.boxId, shelfId: part.shelfId, locationId: part.locationId,
+        equipmentId: part.equipmentId, partCategoryId: part.partCategoryId,
+        storageLocationId: part.storageLocationId,
       })
       setPart(updated)
     } finally { setAdjusting(false) }
@@ -175,10 +149,10 @@ export default function PartDetailPage() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">For asset</label>
-            <select value={assetId} onChange={e => setAssetId(e.target.value)} className="field">
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">For equipment</label>
+            <select value={equipmentId} onChange={e => setEquipmentId(e.target.value)} className="field">
               <option value="">— none —</option>
-              {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {equipment.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </div>
           <div>
@@ -195,10 +169,10 @@ export default function PartDetailPage() {
               placeholder="Search or create…"
             />
           </div>
-          <StoragePicker
-            value={{ locationId, shelfId, boxId }}
-            onChange={(s) => { setLocationId(s.locationId); setShelfId(s.shelfId); setBoxId(s.boxId) }}
-          />
+          <div>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Stored at</label>
+            <StorageLocationPicker value={storageLocationId} onChange={setStorageLocationId} />
+          </div>
           <button onClick={handleSave} disabled={saving}
             className="w-full bg-blue-600 text-white font-semibold py-2 rounded-xl disabled:opacity-50">
             {saving ? 'Saving…' : 'Save Changes'}
@@ -211,21 +185,16 @@ export default function PartDetailPage() {
         <div className={`${card} px-4 py-3 space-y-2`}>
           <div>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Stored at</p>
-            <p className="text-sm">
-              {storageSegments(part).map((s, i) => (
-                <span key={i}>
-                  {i > 0 && <span className="text-slate-300 dark:text-slate-600"> › </span>}
-                  {s.href
-                    ? <Link href={s.href} className="text-blue-600 dark:text-blue-400">{s.label}</Link>
-                    : <span className="text-slate-700 dark:text-slate-200">{s.label}</span>}
-                </span>
-              ))}
+            <p className="text-sm text-slate-700 dark:text-slate-200">
+              {part.storageLocationId
+                ? locationPath(part.storageLocationId, locations)
+                : 'No location'}
             </p>
           </div>
-          {part.asset && (
+          {part.equipment && (
             <div>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">For asset</p>
-              <Link href={`/assets/${part.assetId}`} className="text-sm text-blue-600 dark:text-blue-400">{part.asset.name}</Link>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">For equipment</p>
+              <Link href={`/equipment/${part.equipmentId}`} className="text-sm text-blue-600 dark:text-blue-400">{part.equipment.name}</Link>
             </div>
           )}
           {part.partCategory && (

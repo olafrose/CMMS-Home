@@ -5,53 +5,66 @@ namespace CmmsHome.Api.Data;
 
 public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(options)
 {
-    public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<Equipment> Equipment => Set<Equipment>();
     public DbSet<MaintenanceEvent> Events => Set<MaintenanceEvent>();
     public DbSet<MaintenanceRule> Rules => Set<MaintenanceRule>();
-    public DbSet<Location> Locations => Set<Location>();
+    public DbSet<EquipmentLoan> EquipmentLoans => Set<EquipmentLoan>();
+    public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
     public DbSet<Category> Categories => Set<Category>();
-    public DbSet<Shelf> Shelves => Set<Shelf>();
-    public DbSet<StorageBox> Boxes => Set<StorageBox>();
     public DbSet<Part> Parts => Set<Part>();
     public DbSet<PartUsage> PartUsages => Set<PartUsage>();
     public DbSet<PartCategory> PartCategories => Set<PartCategory>();
-    public DbSet<Tool> Tools => Set<Tool>();
-    public DbSet<ToolCategory> ToolCategories => Set<ToolCategory>();
-    public DbSet<ToolLoan> ToolLoans => Set<ToolLoan>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Asset>()
-            .Property(a => a.CreatedAt)
+        modelBuilder.Entity<Equipment>()
+            .Property(e => e.CreatedAt)
             .HasDefaultValueSql("now()");
 
         modelBuilder.Entity<MaintenanceEvent>()
             .Property(e => e.CreatedAt)
             .HasDefaultValueSql("now()");
 
-        modelBuilder.Entity<Asset>()
-            .HasMany(a => a.Events)
-            .WithOne(e => e.Asset)
-            .HasForeignKey(e => e.AssetId)
+        modelBuilder.Entity<Equipment>()
+            .HasMany(e => e.Events)
+            .WithOne(m => m.Equipment)
+            .HasForeignKey(m => m.EquipmentId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<Asset>()
-            .HasMany(a => a.Rules)
-            .WithOne(r => r.Asset)
-            .HasForeignKey(r => r.AssetId)
+        modelBuilder.Entity<Equipment>()
+            .HasMany(e => e.Rules)
+            .WithOne(r => r.Equipment)
+            .HasForeignKey(r => r.EquipmentId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<Asset>()
-            .HasOne(a => a.Location)
+        modelBuilder.Entity<Equipment>()
+            .HasMany(e => e.Loans)
+            .WithOne(l => l.Equipment)
+            .HasForeignKey(l => l.EquipmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Equipment>()
+            .HasOne(e => e.Category)
             .WithMany()
-            .HasForeignKey(a => a.LocationId)
+            .HasForeignKey(e => e.CategoryId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        modelBuilder.Entity<Asset>()
-            .HasOne(a => a.Category)
+        modelBuilder.Entity<Equipment>()
+            .HasOne(e => e.StorageLocation)
             .WithMany()
-            .HasForeignKey(a => a.CategoryId)
+            .HasForeignKey(e => e.StorageLocationId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // Optional "used on / services" self-link.
+        modelBuilder.Entity<Equipment>()
+            .HasOne(e => e.UsedOnEquipment)
+            .WithMany()
+            .HasForeignKey(e => e.UsedOnEquipmentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<EquipmentLoan>()
+            .Property(l => l.LoanedAt)
+            .HasDefaultValueSql("now()");
 
         modelBuilder.Entity<MaintenanceRule>()
             .Property(r => r.IntervalUnit)
@@ -73,46 +86,23 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .Property(r => r.ReminderLeadUnit)
             .HasDefaultValue(IntervalUnit.Days);
 
-        modelBuilder.Entity<Shelf>()
-            .HasOne(s => s.Location)
-            .WithMany()
-            .HasForeignKey(s => s.LocationId)
+        // Self-referencing storage hierarchy.
+        modelBuilder.Entity<StorageLocation>()
+            .HasOne(s => s.Parent)
+            .WithMany(s => s.Children)
+            .HasForeignKey(s => s.ParentId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        modelBuilder.Entity<StorageBox>()
-            .HasOne(b => b.Shelf)
+        modelBuilder.Entity<Part>()
+            .HasOne(p => p.StorageLocation)
             .WithMany()
-            .HasForeignKey(b => b.ShelfId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<StorageBox>()
-            .HasOne(b => b.Location)
-            .WithMany()
-            .HasForeignKey(b => b.LocationId)
+            .HasForeignKey(p => p.StorageLocationId)
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Part>()
-            .HasOne(p => p.Box)
+            .HasOne(p => p.Equipment)
             .WithMany()
-            .HasForeignKey(p => p.BoxId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<Part>()
-            .HasOne(p => p.Shelf)
-            .WithMany()
-            .HasForeignKey(p => p.ShelfId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<Part>()
-            .HasOne(p => p.Location)
-            .WithMany()
-            .HasForeignKey(p => p.LocationId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<Part>()
-            .HasOne(p => p.Asset)
-            .WithMany()
-            .HasForeignKey(p => p.AssetId)
+            .HasForeignKey(p => p.EquipmentId)
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Part>()
@@ -132,45 +122,5 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .WithMany()
             .HasForeignKey(u => u.PartId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<Tool>()
-            .HasOne(t => t.Box)
-            .WithMany()
-            .HasForeignKey(t => t.BoxId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<Tool>()
-            .HasOne(t => t.Shelf)
-            .WithMany()
-            .HasForeignKey(t => t.ShelfId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<Tool>()
-            .HasOne(t => t.Location)
-            .WithMany()
-            .HasForeignKey(t => t.LocationId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<Tool>()
-            .HasOne(t => t.Asset)
-            .WithMany()
-            .HasForeignKey(t => t.AssetId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<Tool>()
-            .HasOne(t => t.ToolCategory)
-            .WithMany()
-            .HasForeignKey(t => t.ToolCategoryId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<Tool>()
-            .HasMany(t => t.Loans)
-            .WithOne(l => l.Tool)
-            .HasForeignKey(l => l.ToolId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<ToolLoan>()
-            .Property(l => l.LoanedAt)
-            .HasDefaultValueSql("now()");
     }
 }

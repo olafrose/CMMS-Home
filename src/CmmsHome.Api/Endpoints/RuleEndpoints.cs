@@ -10,23 +10,23 @@ public static class RuleEndpoints
     {
         var group = app.MapGroup("/rules").WithTags("Rules");
 
-        group.MapGet("/", async (Guid? asset_id, CmmsDbContext db) =>
+        group.MapGet("/", async (Guid? equipment_id, CmmsDbContext db) =>
         {
             var query = db.Rules.AsQueryable();
-            if (asset_id.HasValue)
-                query = query.Where(r => r.AssetId == asset_id.Value);
+            if (equipment_id.HasValue)
+                query = query.Where(r => r.EquipmentId == equipment_id.Value);
             return await query.ToListAsync();
         });
 
         group.MapPost("/", async (CreateRuleDto dto, CmmsDbContext db) =>
         {
-            if (!await db.Assets.AnyAsync(a => a.Id == dto.AssetId))
+            if (!await db.Equipment.AnyAsync(e => e.Id == dto.EquipmentId))
                 return Results.NotFound();
 
             var rule = new MaintenanceRule
             {
                 Id = Guid.NewGuid(),
-                AssetId = dto.AssetId,
+                EquipmentId = dto.EquipmentId,
                 Name = dto.Name,
                 ScheduleType = dto.ScheduleType,
                 IntervalValue = dto.IntervalValue,
@@ -74,7 +74,7 @@ public static class RuleEndpoints
 }
 
 record CreateRuleDto(
-    Guid AssetId, string? Name, ScheduleType ScheduleType,
+    Guid EquipmentId, string? Name, ScheduleType ScheduleType,
     int IntervalValue, IntervalUnit IntervalUnit, DateTime? LastDoneAt,
     DateTime? NextDueAt, int DueWindowValue, IntervalUnit DueWindowUnit,
     int ReminderLeadValue, IntervalUnit ReminderLeadUnit);

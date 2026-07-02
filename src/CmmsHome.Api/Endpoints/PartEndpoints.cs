@@ -10,29 +10,20 @@ public static class PartEndpoints
     {
         var group = app.MapGroup("/parts").WithTags("Parts");
 
-        group.MapGet("/", async (bool? low_stock, Guid? asset_id, Guid? box_id, Guid? shelf_id, CmmsDbContext db) =>
+        group.MapGet("/", async (bool? low_stock, Guid? equipment_id, Guid? location_id, CmmsDbContext db) =>
         {
             var q = db.Parts
-                .Include(p => p.Box).ThenInclude(b => b!.Shelf).ThenInclude(s => s!.Location)
-                .Include(p => p.Box).ThenInclude(b => b!.Location)
-                .Include(p => p.Shelf).ThenInclude(s => s!.Location)
-                .Include(p => p.Location)
-                .Include(p => p.Asset)
+                .Include(p => p.StorageLocation)
+                .Include(p => p.Equipment)
                 .Include(p => p.PartCategory)
                 .AsQueryable();
 
             if (low_stock == true)
                 q = q.Where(p => p.MinQuantity != null && p.Quantity <= p.MinQuantity);
-
-            if (asset_id.HasValue)
-                q = q.Where(p => p.AssetId == asset_id.Value);
-
-            if (box_id.HasValue)
-                q = q.Where(p => p.BoxId == box_id.Value);
-
-            // A shelf's contents: parts loose on the shelf, plus parts in boxes on that shelf.
-            if (shelf_id.HasValue)
-                q = q.Where(p => p.ShelfId == shelf_id.Value || p.Box!.ShelfId == shelf_id.Value);
+            if (equipment_id.HasValue)
+                q = q.Where(p => p.EquipmentId == equipment_id.Value);
+            if (location_id.HasValue)
+                q = q.Where(p => p.StorageLocationId == location_id.Value);
 
             return await q.OrderBy(p => p.Name).ToListAsync();
         });
@@ -40,11 +31,8 @@ public static class PartEndpoints
         group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
             var part = await db.Parts
-                .Include(p => p.Box).ThenInclude(b => b!.Shelf).ThenInclude(s => s!.Location)
-                .Include(p => p.Box).ThenInclude(b => b!.Location)
-                .Include(p => p.Shelf).ThenInclude(s => s!.Location)
-                .Include(p => p.Location)
-                .Include(p => p.Asset)
+                .Include(p => p.StorageLocation)
+                .Include(p => p.Equipment)
                 .Include(p => p.PartCategory)
                 .FirstOrDefaultAsync(p => p.Id == id);
             return part is not null ? Results.Ok(part) : Results.NotFound();
@@ -53,11 +41,9 @@ public static class PartEndpoints
         group.MapPost("/", async (CreatePartDto dto, CmmsDbContext db) =>
         {
             if (string.IsNullOrWhiteSpace(dto.Name))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                    { ["name"] = ["Name is required"] });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["Name is required"] });
             if (string.IsNullOrWhiteSpace(dto.Unit))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                    { ["unit"] = ["Unit is required"] });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["unit"] = ["Unit is required"] });
 
             var part = new Part
             {
@@ -66,11 +52,9 @@ public static class PartEndpoints
                 Quantity = dto.Quantity,
                 Unit = dto.Unit.Trim(),
                 MinQuantity = dto.MinQuantity,
-                AssetId = dto.AssetId,
+                EquipmentId = dto.EquipmentId,
                 PartCategoryId = dto.PartCategoryId,
-                BoxId = dto.BoxId,
-                ShelfId = dto.ShelfId,
-                LocationId = dto.LocationId,
+                StorageLocationId = dto.StorageLocationId,
             };
             db.Parts.Add(part);
             await db.SaveChangesAsync();
@@ -87,11 +71,9 @@ public static class PartEndpoints
             part.Quantity = dto.Quantity;
             part.Unit = dto.Unit.Trim();
             part.MinQuantity = dto.MinQuantity;
-            part.AssetId = dto.AssetId;
+            part.EquipmentId = dto.EquipmentId;
             part.PartCategoryId = dto.PartCategoryId;
-            part.BoxId = dto.BoxId;
-            part.ShelfId = dto.ShelfId;
-            part.LocationId = dto.LocationId;
+            part.StorageLocationId = dto.StorageLocationId;
             await db.SaveChangesAsync();
             await LoadNavProperties(db, part);
             return Results.Ok(part);
@@ -109,22 +91,11 @@ public static class PartEndpoints
 
     private static async Task LoadNavProperties(CmmsDbContext db, Part part)
     {
-        await db.Entry(part).Reference(p => p.Box).LoadAsync();
-        if (part.Box is not null)
-        {
-            await db.Entry(part.Box).Reference(b => b.Shelf).LoadAsync();
-            if (part.Box.Shelf is not null)
-                await db.Entry(part.Box.Shelf).Reference(s => s.Location).LoadAsync();
-            await db.Entry(part.Box).Reference(b => b.Location).LoadAsync();
-        }
-        await db.Entry(part).Reference(p => p.Shelf).LoadAsync();
-        if (part.Shelf is not null)
-            await db.Entry(part.Shelf).Reference(s => s.Location).LoadAsync();
-        await db.Entry(part).Reference(p => p.Location).LoadAsync();
-        await db.Entry(part).Reference(p => p.Asset).LoadAsync();
+        await db.Entry(part).Reference(p => p.StorageLocation).LoadAsync();
+        await db.Entry(part).Reference(p => p.Equipment).LoadAsync();
         await db.Entry(part).Reference(p => p.PartCategory).LoadAsync();
     }
 }
 
 record CreatePartDto(string Name, decimal Quantity, string Unit, decimal? MinQuantity,
-    Guid? AssetId, Guid? PartCategoryId, Guid? BoxId, Guid? ShelfId, Guid? LocationId);
+    Guid? EquipmentId, Guid? PartCategoryId, Guid? StorageLocationId);

@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import EntityCombobox from '@/components/EntityCombobox'
-import StoragePicker from '@/components/StoragePicker'
-import type { Asset, PartCategory } from '@/lib/types'
+import StorageLocationPicker from '@/components/StorageLocationPicker'
+import type { Equipment, PartCategory } from '@/lib/types'
 
 const UNIT_SUGGESTIONS = ['each', 'L', 'mL', 'kg', 'g', 'm', 'cm', 'pack']
 
@@ -16,19 +16,17 @@ export default function NewPartPage() {
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
-  const [assetId, setAssetId] = useState('')
+  const [equipmentId, setEquipmentId] = useState('')
   const [partCategoryId, setPartCategoryId] = useState<string | null>(null)
-  const [locationId, setLocationId] = useState('')
-  const [shelfId, setShelfId] = useState('')
-  const [boxId, setBoxId] = useState('')
-  const [assets, setAssets] = useState<Asset[]>([])
+  const [storageLocationId, setStorageLocationId] = useState<string | null>(null)
+  const [equipment, setEquipment] = useState<Equipment[]>([])
   const [partCategories, setPartCategories] = useState<PartCategory[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([api.assets.list(), api.partCategories.list()])
-      .then(([asts, cats]) => { setAssets(asts); setPartCategories(cats) })
+    Promise.all([api.equipment.list(), api.partCategories.list()])
+      .then(([eq, cats]) => { setEquipment(eq); setPartCategories(cats) })
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -43,11 +41,9 @@ export default function NewPartPage() {
         quantity: Number(quantity),
         unit: unit.trim(),
         minQuantity: minQuantity ? Number(minQuantity) : undefined,
-        assetId: assetId || undefined,
+        equipmentId: equipmentId || undefined,
         partCategoryId: partCategoryId || undefined,
-        boxId: boxId || undefined,
-        shelfId: !boxId && shelfId ? shelfId : undefined,
-        locationId: !boxId && !shelfId && locationId ? locationId : undefined,
+        storageLocationId: storageLocationId || undefined,
       })
       router.push(`/parts/${part.id}`)
     } catch {
@@ -98,10 +94,10 @@ export default function NewPartPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">For asset (optional)</label>
-          <select value={assetId} onChange={e => setAssetId(e.target.value)} className="field">
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">For equipment (optional)</label>
+          <select value={equipmentId} onChange={e => setEquipmentId(e.target.value)} className="field">
             <option value="">— none —</option>
-            {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            {equipment.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
 
@@ -120,10 +116,10 @@ export default function NewPartPage() {
           />
         </div>
 
-        <StoragePicker
-          value={{ locationId, shelfId, boxId }}
-          onChange={(s) => { setLocationId(s.locationId); setShelfId(s.shelfId); setBoxId(s.boxId) }}
-        />
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Stored at (optional)</label>
+          <StorageLocationPicker value={storageLocationId} onChange={setStorageLocationId} />
+        </div>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
 

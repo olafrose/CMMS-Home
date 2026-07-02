@@ -3,7 +3,7 @@ namespace CmmsHome.Api.Models;
 public class MaintenanceRule
 {
     public Guid Id { get; set; }
-    public Guid AssetId { get; set; }
+    public Guid EquipmentId { get; set; }
     public string? Name { get; set; }
     public ScheduleType ScheduleType { get; set; } = ScheduleType.Interval;
 
@@ -21,7 +21,7 @@ public class MaintenanceRule
     public int ReminderLeadValue { get; set; } = 30;
     public IntervalUnit ReminderLeadUnit { get; set; } = IntervalUnit.Days;
 
-    public Asset Asset { get; set; } = null!;
+    public Equipment Equipment { get; set; } = null!;
 
     public MaintenanceStatus Status
     {

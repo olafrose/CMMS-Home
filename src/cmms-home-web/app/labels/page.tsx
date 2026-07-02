@@ -3,14 +3,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Asset, Location, Shelf, StorageBox } from '@/lib/types'
+import type { Equipment, StorageLocation } from '@/lib/types'
+import { locationPath, DEFAULT_LOCATION_ICON } from '@/lib/storage'
 import PrintLabel, { type QrPosition, type LabelAlign } from '@/components/PrintLabel'
 import {
   LABEL_FORMATS, LABEL_FORMAT_GROUPS, PAGE_DIMENSIONS_MM,
   layoutFromFormat, type LabelLayout,
 } from '@/lib/labelFormats'
 
-type Kind = 'asset' | 'box' | 'shelf'
+type Kind = 'equipment' | 'place'
 
 interface LabelItem {
   key: string
@@ -63,10 +64,8 @@ function NumField({ label, value, onChange, step = 0.1, min = 0 }: {
 }
 
 export default function LabelsPage() {
-  const [assets, setAssets] = useState<Asset[]>([])
-  const [shelves, setShelves] = useState<Shelf[]>([])
-  const [boxes, setBoxes] = useState<StorageBox[]>([])
-  const [locations, setLocations] = useState<Location[]>([])
+  const [equipment, setEquipment] = useState<Equipment[]>([])
+  const [places, setPlaces] = useState<StorageLocation[]>([])
   const [loading, setLoading] = useState(true)
   const [origin, setOrigin] = useState('')
   const [onlyKey, setOnlyKey] = useState<string | null>(null)
@@ -91,7 +90,7 @@ export default function LabelsPage() {
   useEffect(() => {
     setOrigin(window.location.origin)
     const only = new URLSearchParams(window.location.search).get('only')
-    if (only && /^(asset|box|shelf):/.test(only)) setOnlyKey(only)
+    if (only && /^(equipment|place):/.test(only)) setOnlyKey(only)
     // Restore last-used format + arrangement.
     try {
       const savedFmt = localStorage.getItem('labels.formatId')
@@ -110,38 +109,36 @@ export default function LabelsPage() {
   }, [formatId])
 
   useEffect(() => {
-    Promise.all([api.assets.list(), api.shelves.list(), api.boxes.list(), api.locations.list()])
-      .then(([a, s, b, l]) => { setAssets(a); setShelves(s); setBoxes(b); setLocations(l) })
+    Promise.all([api.equipment.list(), api.storageLocations.list()])
+      .then(([eq, p]) => { setEquipment(eq); setPlaces(p) })
       .finally(() => setLoading(false))
   }, [])
 
   const qrBase = process.env.NEXT_PUBLIC_QR_BASE_URL || origin
 
-  const assetItems = useMemo<LabelItem[]>(() => assets.map(a => ({
-    key: `asset:${a.id}`, kind: 'asset', icon: '🔧', name: a.name,
-    lines: [a.location?.name, a.category?.name].filter(Boolean) as string[],
+  const equipmentItems = useMemo<LabelItem[]>(() => equipment.map(e => ({
+    key: `equipment:${e.id}`, kind: 'equipment', icon: e.kind === 'Tool' ? '🛠️' : '🔧', name: e.name,
+    lines: [e.category?.name, e.storageLocation?.name].filter(Boolean) as string[],
     caption: 'Scan to log maintenance',
-    qrUrl: `${qrBase}/assets/${a.id}/log`,
-  })), [assets, qrBase])
+    qrUrl: `${qrBase}/equipment/${e.id}/log`,
+  })), [equipment, qrBase])
 
-  const shelfItems = useMemo<LabelItem[]>(() => shelves.map(s => ({
-    key: `shelf:${s.id}`, kind: 'shelf', icon: '🗄️', name: s.name,
-    lines: [s.location.name], caption: 'Scan to see contents',
-    qrUrl: `${qrBase}/storage/shelf/${s.id}`,
-  })), [shelves, qrBase])
-
-  const boxItems = useMemo<LabelItem[]>(() => boxes.map(b => ({
-    key: `box:${b.id}`, kind: 'box', icon: '📦', name: b.name,
-    lines: [b.shelf ? b.shelf.location.name : b.location?.name, b.shelf?.name].filter(Boolean) as string[],
-    caption: 'Scan to see contents',
-    qrUrl: `${qrBase}/storage/box/${b.id}`,
-  })), [boxes, qrBase])
+  // Every storage location is a printable label; the subtitle is its ancestor breadcrumb.
+  const placeItems = useMemo<LabelItem[]>(() => places.map(p => {
+    const ancestors = locationPath(p.parentId, places)
+    return {
+      key: `place:${p.id}`, kind: 'place', icon: p.icon || DEFAULT_LOCATION_ICON, name: p.name,
+      lines: ancestors ? [ancestors] : [],
+      caption: 'Scan to see contents',
+      qrUrl: `${qrBase}/storage/${p.id}`,
+    }
+  }), [places, qrBase])
 
   const itemsByKey = useMemo(() => {
     const m = new Map<string, LabelItem>()
-    for (const it of [...assetItems, ...shelfItems, ...boxItems]) m.set(it.key, it)
+    for (const it of [...equipmentItems, ...placeItems]) m.set(it.key, it)
     return m
-  }, [assetItems, shelfItems, boxItems])
+  }, [equipmentItems, placeItems])
 
   // Default selection once data is loaded: everything, or just the preselected item.
   useEffect(() => {
@@ -181,17 +178,13 @@ export default function LabelsPage() {
     })
   }
 
-  // Boxes grouped by location for the selection list.
-  const boxGroups = useMemo(() => {
-    const groups = new Map<string, LabelItem[]>()
-    for (const b of boxes) {
-      const loc = b.shelf ? b.shelf.location.name : b.location?.name ?? 'Unassigned'
-      const it = boxItems.find(i => i.key === `box:${b.id}`)!
-      if (!groups.has(loc)) groups.set(loc, [])
-      groups.get(loc)!.push(it)
-    }
-    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [boxes, boxItems])
+  // Places listed with their full path, ordered so parents precede children.
+  const placeRows = useMemo(
+    () => places
+      .map(p => ({ item: placeItems.find(i => i.key === `place:${p.id}`)!, path: locationPath(p.id, places) }))
+      .sort((a, b) => a.path.localeCompare(b.path)),
+    [places, placeItems],
+  )
 
   const selectedItems = useMemo(
     () => [...itemsByKey.values()].filter(it => selected.has(it.key)),
@@ -400,24 +393,20 @@ export default function LabelsPage() {
 
             {selectionOpen && (
               <>
-                <SelectSection title="🔧 Assets" items={assetItems} selected={selected} onToggle={toggle} onSetMany={setMany} />
-                <SelectSection title="🗄️ Shelves" items={shelfItems} selected={selected} onToggle={toggle} onSetMany={setMany} />
+                <SelectSection title="🔧 Equipment" items={equipmentItems} selected={selected} onToggle={toggle} onSetMany={setMany} />
 
-                {boxItems.length > 0 && (
+                {placeItems.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">📦 Boxes</p>
-                      <button onClick={() => setMany(boxItems.map(i => i.key), true)} className="ml-auto text-xs text-blue-500 underline">All</button>
-                      <button onClick={() => setMany(boxItems.map(i => i.key), false)} className="text-xs text-blue-500 underline">None</button>
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">🧊 Places</p>
+                      <button onClick={() => setMany(placeItems.map(i => i.key), true)} className="ml-auto text-xs text-blue-500 underline">All</button>
+                      <button onClick={() => setMany(placeItems.map(i => i.key), false)} className="text-xs text-blue-500 underline">None</button>
                     </div>
-                    {boxGroups.map(([loc, items]) => (
-                      <div key={loc} className="space-y-1">
-                        <p className="text-xs font-medium text-slate-400 dark:text-slate-500">{loc}</p>
-                        <div className="grid sm:grid-cols-2 gap-1">
-                          {items.map(it => <ItemRow key={it.key} item={it} checked={selected.has(it.key)} onToggle={toggle} />)}
-                        </div>
-                      </div>
-                    ))}
+                    <div className="grid sm:grid-cols-2 gap-1">
+                      {placeRows.map(({ item, path }) => (
+                        <PlaceRow key={item.key} item={item} path={path} checked={selected.has(item.key)} onToggle={toggle} />
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
@@ -483,6 +472,17 @@ function ItemRow({ item, checked, onToggle }: { item: LabelItem; checked: boolea
       <input type="checkbox" checked={checked} onChange={() => onToggle(item.key)} className="w-4 h-4 accent-blue-600" />
       <span className="text-sm text-slate-700 dark:text-slate-200 truncate flex-1">{item.name}</span>
       {item.lines.length > 0 && <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[45%]">{item.lines.join(' · ')}</span>}
+    </label>
+  )
+}
+
+function PlaceRow({ item, path, checked, onToggle }: {
+  item: LabelItem; path: string; checked: boolean; onToggle: (k: string) => void
+}) {
+  return (
+    <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={() => onToggle(item.key)} className="w-4 h-4 accent-blue-600" />
+      <span className="text-sm text-slate-700 dark:text-slate-200 truncate flex-1">{path || item.name}</span>
     </label>
   )
 }

@@ -3,42 +3,30 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Tool } from '@/lib/types'
+import type { Equipment } from '@/lib/types'
 
-function storageBreadcrumb(tool: Tool): string {
-  if (tool.box) {
-    const shelf = tool.box.shelf
-    if (shelf) return `${tool.box.name} › ${shelf.name} › ${shelf.location.name}`
-    if (tool.box.location) return `${tool.box.name} › ${tool.box.location.name}`
-    return tool.box.name
-  }
-  if (tool.shelf) return `${tool.shelf.name} › ${tool.shelf.location.name}`
-  if (tool.location) return tool.location.name
-  return 'No location'
-}
-
-function openLoan(tool: Tool) {
+function openLoan(tool: Equipment) {
   return tool.loans?.find(l => !l.returnedAt)
 }
 
-function ToolRow({ tool }: { tool: Tool }) {
+function ToolRow({ tool }: { tool: Equipment }) {
   const loan = openLoan(tool)
   return (
     <Link
-      href={`/tools/${tool.id}`}
+      href={`/equipment/${tool.id}`}
       className="flex items-center gap-4 bg-white dark:bg-slate-800 rounded-xl px-4 py-3 shadow-sm border border-slate-100 dark:border-slate-700"
     >
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{tool.name}</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{storageBreadcrumb(tool)}</p>
-        {(tool.toolCategory || tool.asset) && (
+        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{tool.storageLocation?.name ?? 'No location'}</p>
+        {(tool.category || tool.usedOnEquipment) && (
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            {tool.toolCategory && (
+            {tool.category && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                {tool.toolCategory.name}
+                {tool.category.name}
               </span>
             )}
-            {tool.asset && <span className="text-xs text-slate-400 dark:text-slate-500 truncate">for {tool.asset.name}</span>}
+            {tool.usedOnEquipment && <span className="text-xs text-slate-400 dark:text-slate-500 truncate">for {tool.usedOnEquipment.name}</span>}
           </div>
         )}
       </div>
@@ -96,31 +84,31 @@ function ActiveChip({ label, onClear }: { label: string; onClear: () => void }) 
 }
 
 export default function ToolsPage() {
-  const [tools, setTools] = useState<Tool[]>([])
+  const [tools, setTools] = useState<Equipment[]>([])
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
   const [activeAsset, setActiveAsset] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
   useEffect(() => {
-    api.tools.list().then(setTools).finally(() => setLoading(false))
+    api.equipment.list({ kind: 'tool' }).then(setTools).finally(() => setLoading(false))
   }, [])
 
   const assetOptions = useMemo(() => {
     const seen = new Map<string, string>()
-    for (const t of tools) if (t.assetId && t.asset) seen.set(t.assetId, t.asset.name)
+    for (const t of tools) if (t.usedOnEquipmentId && t.usedOnEquipment) seen.set(t.usedOnEquipmentId, t.usedOnEquipment.name)
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [tools])
 
   const categoryOptions = useMemo(() => {
     const seen = new Map<string, string>()
-    for (const t of tools) if (t.toolCategoryId && t.toolCategory) seen.set(t.toolCategoryId, t.toolCategory.name)
+    for (const t of tools) if (t.categoryId && t.category) seen.set(t.categoryId, t.category.name)
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [tools])
 
   const filtered = tools.filter(t =>
-    (!activeAsset || t.assetId === activeAsset) &&
-    (!activeCategory || t.toolCategoryId === activeCategory)
+    (!activeAsset || t.usedOnEquipmentId === activeAsset) &&
+    (!activeCategory || t.categoryId === activeCategory)
   )
 
   const onLoan = filtered.filter(t => openLoan(t))
@@ -141,7 +129,7 @@ export default function ToolsPage() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Tools</h1>
         <Link
-          href="/tools/new"
+          href="/equipment/new?kind=tool"
           className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow"
         >
           + New
@@ -200,7 +188,7 @@ export default function ToolsPage() {
           <p className="text-4xl mb-3">🛠️</p>
           <p className="font-medium">No tools yet</p>
           <p className="text-sm mt-1">
-            <Link href="/tools/new" className="text-blue-500 underline">Add your first tool</Link>
+            <Link href="/equipment/new?kind=tool" className="text-blue-500 underline">Add your first tool</Link>
           </p>
         </div>
       )}

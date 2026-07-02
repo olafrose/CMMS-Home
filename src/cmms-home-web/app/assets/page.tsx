@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Asset } from '@/lib/types'
+import type { Equipment } from '@/lib/types'
 
 function FilterGroup({ label, entries, active, onSelect }: {
   label: string
@@ -49,14 +49,14 @@ function ActiveChip({ label, onClear }: { label: string; onClear: () => void }) 
 }
 
 export default function AssetsPage() {
-  const [assets, setAssets] = useState<Asset[]>([])
+  const [assets, setAssets] = useState<Equipment[]>([])
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
   const [activeLocation, setActiveLocation] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
   useEffect(() => {
-    api.assets.list()
+    api.equipment.list({ kind: 'asset' })
       .then(setAssets)
       .finally(() => setLoading(false))
   }, [])
@@ -64,7 +64,7 @@ export default function AssetsPage() {
   const locations = useMemo(() => {
     const seen = new Map<string, string>()
     for (const a of assets) {
-      if (a.locationId && a.location) seen.set(a.locationId, a.location.name)
+      if (a.storageLocationId && a.storageLocation) seen.set(a.storageLocationId, a.storageLocation.name)
     }
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [assets])
@@ -78,7 +78,7 @@ export default function AssetsPage() {
   }, [assets])
 
   const filtered = assets.filter(a =>
-    (!activeLocation || a.locationId === activeLocation) &&
+    (!activeLocation || a.storageLocationId === activeLocation) &&
     (!activeCategory || a.categoryId === activeCategory)
   )
 
@@ -99,7 +99,7 @@ export default function AssetsPage() {
         <div className="flex items-center gap-3">
           <Link href="/labels" className="text-sm text-blue-500 font-medium">🖨️ Labels</Link>
           <Link
-            href="/assets/new"
+            href="/equipment/new?kind=asset"
             className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow"
           >
             + New
@@ -163,7 +163,7 @@ export default function AssetsPage() {
           <p className="text-4xl mb-3">🔧</p>
           <p className="font-medium">No assets yet</p>
           <p className="text-sm mt-1">
-            <Link href="/assets/new" className="text-blue-500 underline">Add your first asset</Link>
+            <Link href="/equipment/new?kind=asset" className="text-blue-500 underline">Add your first asset</Link>
           </p>
         </div>
       )}
@@ -178,13 +178,13 @@ export default function AssetsPage() {
         {filtered.map((asset) => (
           <li key={asset.id}>
             <Link
-              href={`/assets/${asset.id}`}
+              href={`/equipment/${asset.id}`}
               className="flex items-center gap-4 bg-white dark:bg-slate-800 rounded-xl px-4 py-4 shadow-sm border border-slate-100 dark:border-slate-700"
             >
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{asset.name}</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
-                  {[asset.category?.name, asset.location?.name].filter(Boolean).join(' · ') || 'No details'}
+                  {[asset.category?.name, asset.storageLocation?.name].filter(Boolean).join(' · ') || 'No details'}
                 </p>
               </div>
               <span className="text-slate-300 dark:text-slate-600 text-lg">›</span>

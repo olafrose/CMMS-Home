@@ -45,13 +45,16 @@ Single-project Minimal API. No service layer — endpoints call `CmmsDbContext` 
 ├── Program.cs               # DI setup, middleware, endpoint registration, auto-migrate on startup
 ├── Data/CmmsDbContext.cs    # EF Core context; fluent config for cascade deletes + DB defaults
 ├── Models/                  # Plain C# model classes — no EF Core references
-│   ├── Asset.cs
+│   ├── Equipment.cs         # durable item; Kind = Asset|Tool|Both (former Asset + Tool)
+│   ├── EquipmentLoan.cs     # lending history (former ToolLoan)
+│   ├── StorageLocation.cs   # self-referencing storage hierarchy (former Location/Shelf/Box)
 │   ├── MaintenanceEvent.cs  # type: maintenance | repair | cleaning | replacement
 │   └── MaintenanceRule.cs   # computed Status property (Ok/Upcoming/Due/Overdue)
 └── Endpoints/               # One static class per resource; extension methods on WebApplication
-    ├── AssetEndpoints.cs    # full CRUD; inline record CreateAssetDto
-    ├── EventEndpoints.cs    # POST + GET (filter by ?asset_id=) + GET/:id
-    └── RuleEndpoints.cs     # POST + GET (filter by ?asset_id=) + PUT/:id
+    ├── EquipmentEndpoints.cs      # CRUD + ?kind=/?location_id=/?on_loan=/?maintained= + checkout/return
+    ├── StorageLocationEndpoints.cs # CRUD + move (cycle/depth guards) + /{id}/contents
+    ├── EventEndpoints.cs    # POST + GET (filter by ?equipment_id=) + GET/:id
+    └── RuleEndpoints.cs     # POST + GET (filter by ?equipment_id=) + PUT/:id
 ```
 
 The `Dockerfile` is in `src/CmmsHome.Api/` and uses `.` (repo root) as the build context.
@@ -66,50 +69,59 @@ Next.js 16 App Router. All pages are `'use client'` with client-side data fetchi
 ├── lib/labelFormats.ts      # sheet/roll label format presets (Avery, Brother, Dymo)
 ├── components/BottomNav.tsx # Fixed bottom tab bar (Home / Assets / Scan)
 ├── components/PrintLabel.tsx # one printable QR label, fills its cell
+├── components/StorageLocationPicker.tsx # typeahead + breadcrumb place picker
 └── app/
     ├── layout.tsx           # Root layout: PWA meta, BottomNav
     ├── page.tsx             # Dashboard: overdue/upcoming rules + recent events
-    ├── labels/page.tsx      # print QR labels for assets/boxes/shelves (batch or single)
-    ├── assets/
-    │   ├── page.tsx         # Asset list
-    │   ├── new/page.tsx     # Create asset form
-    │   └── [id]/
-    │       ├── page.tsx     # Asset detail: info, QR code, schedule, event timeline
-    │       └── log/page.tsx # Quick maintenance log (≤10s: 4-button type picker + note)
+    ├── labels/page.tsx      # print QR labels for equipment/places (batch or single)
+    ├── equipment/[id]/
+    │   ├── page.tsx         # Universal detail: info, lending, schedule, history, QR, parts
+    │   └── log/page.tsx     # Quick maintenance log (≤10s: 4-button type picker + note)
+    ├── equipment/new/page.tsx  # Create form (kind selector); /assets|tools/new redirect here
+    ├── assets/page.tsx      # Equipment list, kind=asset view (/assets/{id}* redirect to /equipment)
+    ├── tools/page.tsx       # Equipment list, kind=tool view
+    ├── storage/            # nestable tree + /storage/{id} contents
     └── scan/page.tsx        # Camera QR scanner (html5-qrcode, dynamic import)
 ```
 
 **Key patterns:**
 - `useParams<{ id: string }>()` for dynamic route params (Next.js 16: params are Promises in server components; use the hook in client components)
-- QR codes on asset detail encode `window.location.origin + /assets/{id}/log` — scannable from any device on the same network
+- Equipment QR codes encode `window.location.origin + /equipment/{id}/log`; legacy
+  `/assets/{id}/log` and `/storage/{type}/{id}` URLs on already-printed labels redirect
+- `StorageLocationPicker` self-loads places; `locationPath()`/`DEFAULT_LOCATION_ICON` live in `lib/storage.ts`
 - `NEXT_PUBLIC_API_URL` defaults to `http://localhost:8080`; override for non-localhost deployments
 - `html5-qrcode` is dynamically imported in `scan/page.tsx` to avoid SSR issues
 
 ## Data Model
 
 ```
-Asset               { Id UUID, Name*, CategoryId?→Category, LocationId?→Location, ImageUrl?, CreatedAt }
-MaintenanceEvent    { Id, AssetId, Type(maintenance|repair|cleaning|replacement), Note?, PhotoUrl?, CreatedAt }
-MaintenanceRule     { Id, AssetId, Name?, IntervalValue, IntervalUnit(Days|Weeks|Months|Years), LastDoneAt? }
+Equipment           { Id UUID, Name*, Kind(Asset|Tool|Both), CategoryId?→Category, StorageLocationId?→StorageLocation,
+                      ImageUrl?, Notes?, UsedOnEquipmentId?→Equipment, CreatedAt }
+EquipmentLoan       { Id, EquipmentId, Borrower*, LoanedAt (default now()), ReturnedAt? }
+MaintenanceEvent    { Id, EquipmentId, Type(maintenance|repair|cleaning|replacement), Note?, PhotoUrl?, CreatedAt }
+MaintenanceRule     { Id, EquipmentId, Name?, IntervalValue, IntervalUnit(Days|Weeks|Months|Years), LastDoneAt? }
 ```
 
-(`Category`/`Location` are first-class entities; parts/storage models are in the Parts & Storage section below.)
+`Equipment` is the unified durable-item table (Asset + Tool merged). `Kind` is a
+*lens* only: any equipment can be located, maintained (Rules/Events), and lent
+(Loans). The `/assets` and `/tools` pages are `?kind=`-filtered views (Assets =
+Asset+Both, Tools = Tool+Both); the detail page `/equipment/{id}` is universal.
+(`Category` is first-class; parts/storage models are in the Parts & Storage section below.)
 
 Due/overdue logic (in `MaintenanceRule.Status`): `LastDoneAt + IntervalValue·IntervalUnit < UtcNow` → Overdue; within 30 days → Upcoming; `LastDoneAt` null → Due.
 
 ## REST API Surface
 
 ```
-Assets:      POST/GET /assets  |  GET/PUT/DELETE /assets/{id}
-Events:      POST /events  |  GET /events?asset_id=  |  GET /events/{id}
-Rules:       POST /rules  |  GET /rules?asset_id=  |  PUT /rules/{id}
-Locations:   CRUD /locations
+Equipment:   POST/GET /equipment (?kind=asset|tool, ?location_id=, ?on_loan=, ?maintained=)
+             |  GET/PUT/DELETE /equipment/{id}  |  POST /equipment/{id}/checkout, /equipment/{id}/return
+Events:      POST /events  |  GET /events?equipment_id=  |  GET/PUT /events/{id}
+Rules:       POST /rules  |  GET /rules?equipment_id=  |  PUT/DELETE /rules/{id}
+StorageLocations: CRUD /storage-locations (?parent_id=, ?q=)  |  GET /storage-locations/{id}/contents
 Categories:  CRUD /categories
-Shelves:     CRUD /shelves   |  Boxes: CRUD /boxes
-Parts:       POST/GET /parts  |  GET/PUT/DELETE /parts/{id}
+Parts:       POST/GET /parts (?equipment_id=, ?location_id=, ?low_stock=)  |  GET/PUT/DELETE /parts/{id}
 PartUsages:  POST/GET /part-usages  |  DELETE /part-usages/{id}
-Tools:       POST/GET /tools  |  GET/PUT/DELETE /tools/{id}  |  POST /tools/{id}/checkout, /tools/{id}/return
-ToolCategories: CRUD /tool-categories
+PartCategories: CRUD /part-categories
 ```
 
 ## Key UX Constraints
@@ -120,52 +132,46 @@ ToolCategories: CRUD /tool-categories
 - **Minimal required fields**: Only `Name` is required for assets; `Type` for events
 - **Mobile-first**: All UI decisions should prioritize mobile usability
 
-## Parts & Storage (added to MVP after first verification)
+## Parts & Storage
 
-Spare-parts management was **intentionally added to the MVP scope after the core
-functionality was first verified working**. It is no longer out of scope. It
-comprises parts inventory, per-event parts consumption, and a storage hierarchy:
+Parts inventory, per-event parts consumption, and the unified storage hierarchy:
 
 ```
-Part       { Id, Name*, Quantity, Unit*, MinQuantity?, BoxId? | ShelfId? | LocationId? }
+Part       { Id, Name*, Quantity, Unit*, MinQuantity?, EquipmentId?, PartCategoryId?, StorageLocationId? }
 PartUsage  { Id, MaintenanceEventId, PartId, QuantityUsed }   # parts consumed by an event
-StorageBox { Id, Name, ShelfId? | LocationId? }
-Shelf      { Id, Name, LocationId }
 ```
 
-- A `Part` references exactly one of `BoxId` / `ShelfId` / `LocationId` for its location.
+- A `Part` is consumable (has `Quantity`/`Unit`); it stays a **separate table** from
+  `Equipment`. It references one `StorageLocationId` and optionally the `Equipment` it's for.
 - Logging a maintenance event flows into an optional "parts used" step
   (`/events/{id}/parts`) which decrements stock.
 - Dashboard surfaces low-stock parts (`Quantity ≤ MinQuantity`).
-- Endpoints: `PartEndpoints`, `PartUsageEndpoints`, `BoxEndpoints`, `ShelfEndpoints`.
-- Frontend: `/parts`, `/storage` pages + `LocationCombobox` / `EntityCombobox`.
+- Endpoints: `PartEndpoints`, `PartUsageEndpoints`. Frontend: `/parts` + `EntityCombobox`.
 
-`Category` and `Location` were also promoted from free-text asset fields to first-class
-entities (with `/categories` and `/locations` management pages).
+### Unified storage (`StorageLocation`)
 
-### Tools (non-consumable items)
+`Location`/`Shelf`/`StorageBox` were collapsed into one self-referencing
+`StorageLocation { Id, Name*, Icon?, ParentId? }` (Room > Shelf > Box, or any nesting;
+API caps depth at 4). Every `Equipment` and `Part` references a single
+`StorageLocationId` at any depth. Each place has an optional emoji `Icon`
+(default `DEFAULT_LOCATION_ICON` in `lib/storage.ts`).
 
-The storage hierarchy is also reused to track **non-consumable items** (hand/power tools,
-etc.) — where each lives, plus category, linked asset, notes, and loan status. `Tool` is a
-**sibling to `Part`**, not a variant of it: it has no `Quantity`/`Unit`/`MinQuantity` and is
-never consumed. This keeps both tables free of dead columns (a `Kind` flag on `Part` was
-rejected for that reason; table-per-type inheritance was rejected to avoid restructuring
-existing `Parts` data).
+- Endpoints: `StorageLocationEndpoints` (CRUD, move with cycle/depth guards, `/{id}/contents`
+  returning ancestors + child places + equipment + parts).
+- Frontend: `/storage` nestable tree (add/rename/**move**/delete) + `/storage/{id}` contents;
+  `StorageLocationPicker` (typeahead + breadcrumb). Legacy `/storage/{type}/{id}` redirects
+  to `/storage/{id}` via `next.config.ts`. `/locations` redirects to `/storage`.
 
-```
-Tool         { Id, Name*, Notes?, AssetId?, ToolCategoryId?, BoxId? | ShelfId? | LocationId?, Loans[] }
-ToolCategory { Id, Name* }                       # separate taxonomy, mirrors PartCategory
-ToolLoan     { Id, ToolId, Borrower*, LoanedAt (default now()), ReturnedAt? }
-```
+### Equipment merge (Asset + Tool)
 
-- A tool is **currently on loan** iff it has a `ToolLoan` with `ReturnedAt == null`.
-  `GET /tools` uses a filtered include so `Tool.Loans` returns only the open loan (0 or 1).
-- Checkout (`POST /tools/{id}/checkout` `{ borrower }`) rejects if already out; return
-  (`POST /tools/{id}/return`) stamps `ReturnedAt`.
-- Storage contents view (`/storage/{type}/{id}`) and box/shelf QR pages list tools alongside
-  parts. Dashboard surfaces tools that are out on loan.
-- Endpoints: `ToolEndpoints`, `ToolCategoryEndpoints`. Frontend: `/tools`, `/tools/new`,
-  `/tools/{id}` — reuse `StoragePicker` + `EntityCombobox`.
+`Asset` and `Tool` were merged into one `Equipment` table (see Data Model). Rationale:
+once tools can be maintained, the only difference from an asset is "can be lent" — and
+assets can be lent too, so they're one concept viewed through two lenses. `Kind`
+(Asset|Tool|Both) drives which filtered list a row shows in; the `/equipment/{id}` detail
+page always offers maintenance schedule + history **and** lending. `UsedOnEquipmentId` is
+an optional self-link ("used on / services", former `Tool.AssetId`) — purely associative,
+not maintenance ownership. `ToolCategory` folded into `Category`; `ToolLoan` → `EquipmentLoan`.
+`Category` was promoted from a free-text field to a first-class entity (`/categories`).
 
 ## Out of Scope (MVP)
 

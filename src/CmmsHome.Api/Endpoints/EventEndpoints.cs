@@ -12,11 +12,11 @@ public static class EventEndpoints
     {
         var group = app.MapGroup("/events").WithTags("Events");
 
-        group.MapGet("/", async (Guid? asset_id, CmmsDbContext db) =>
+        group.MapGet("/", async (Guid? equipment_id, CmmsDbContext db) =>
         {
             var query = db.Events.AsQueryable();
-            if (asset_id.HasValue)
-                query = query.Where(e => e.AssetId == asset_id.Value);
+            if (equipment_id.HasValue)
+                query = query.Where(e => e.EquipmentId == equipment_id.Value);
             return await query.OrderByDescending(e => e.CreatedAt).ToListAsync();
         });
 
@@ -51,7 +51,7 @@ public static class EventEndpoints
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                     { ["type"] = [$"Type must be one of: {string.Join(", ", ValidTypes)}"] });
 
-            if (!await db.Assets.AnyAsync(a => a.Id == dto.AssetId))
+            if (!await db.Equipment.AnyAsync(e => e.Id == dto.EquipmentId))
                 return Results.NotFound();
 
             // Default to now, but allow back-dating a forgotten task to when it was done.
@@ -59,7 +59,7 @@ public static class EventEndpoints
             var evt = new MaintenanceEvent
             {
                 Id = Guid.NewGuid(),
-                AssetId = dto.AssetId,
+                EquipmentId = dto.EquipmentId,
                 Type = dto.Type,
                 Note = dto.Note,
                 PhotoUrl = dto.PhotoUrl,
@@ -72,7 +72,7 @@ public static class EventEndpoints
             // that a more recent event already advanced. Due-date schedules are anchored to
             // an explicit next-due date instead, so logging never touches them.
             await db.Rules
-                .Where(r => r.AssetId == dto.AssetId && r.ScheduleType == ScheduleType.Interval)
+                .Where(r => r.EquipmentId == dto.EquipmentId && r.ScheduleType == ScheduleType.Interval)
                 .ExecuteUpdateAsync(s => s.SetProperty(
                     r => r.LastDoneAt,
                     r => r.LastDoneAt == null || occurredAt > r.LastDoneAt ? occurredAt : r.LastDoneAt));
@@ -83,5 +83,5 @@ public static class EventEndpoints
     }
 }
 
-record CreateEventDto(Guid AssetId, string Type, string? Note, string? PhotoUrl, DateTime? OccurredAt);
+record CreateEventDto(Guid EquipmentId, string Type, string? Note, string? PhotoUrl, DateTime? OccurredAt);
 record UpdateEventDto(string Type, string? Note, DateTime? OccurredAt);

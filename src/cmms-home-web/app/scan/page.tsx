@@ -36,10 +36,17 @@ export default function ScanPage() {
   }, [isSecure]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDecoded(decoded: string) {
-    const storage = decoded.match(/\/storage\/(box|shelf)\/([0-9a-f-]{36})/i)
+    // Equipment QRs (/equipment/{id} optionally /log) → open the equipment quick-log.
+    const equipment = decoded.match(/\/equipment\/([0-9a-f-]{36})/i)
+    // Accept new place QRs (/storage/{id}) and legacy typed ones (/storage/{box|shelf}/{id}).
+    const storageTyped = decoded.match(/\/storage\/(?:box|shelf)\/([0-9a-f-]{36})/i)
+    const storagePlain = decoded.match(/\/storage\/([0-9a-f-]{36})(?:[/?#]|$)/i)
     const asset = decoded.match(/\/assets\/([0-9a-f-]{36})/i)
-    if (storage) {
-      router.push(`/storage/${storage[1].toLowerCase()}/${storage[2]}`)
+    const storageId = storageTyped?.[1] ?? storagePlain?.[1]
+    if (equipment) {
+      router.push(`/equipment/${equipment[1]}/log`)
+    } else if (storageId) {
+      router.push(`/storage/${storageId}`)
     } else if (asset) {
       router.push(`/assets/${asset[1]}/log`)
     } else if (/^[0-9a-f-]{36}$/i.test(decoded)) {

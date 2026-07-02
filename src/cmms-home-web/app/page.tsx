@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Asset, MaintenanceEvent, MaintenanceRule, Part, Tool } from '@/lib/types'
+import type { Equipment, MaintenanceEvent, MaintenanceRule, Part } from '@/lib/types'
 
 function addInterval(date: Date, value: number, unit: MaintenanceRule['intervalUnit']): Date {
   const d = new Date(date)
@@ -56,21 +56,21 @@ function formatDate(iso: string) {
 }
 
 export default function DashboardPage() {
-  const [assets, setAssets] = useState<Record<string, Asset>>({})
+  const [equipment, setEquipment] = useState<Record<string, Equipment>>({})
   const [rules, setRules] = useState<MaintenanceRule[]>([])
   const [events, setEvents] = useState<MaintenanceEvent[]>([])
   const [lowStockParts, setLowStockParts] = useState<Part[]>([])
-  const [loanedTools, setLoanedTools] = useState<Tool[]>([])
+  const [loanedEquipment, setLoanedEquipment] = useState<Equipment[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([api.assets.list(), api.rules.list(), api.events.list(), api.parts.list({ lowStock: true }), api.tools.list({ onLoan: true })])
-      .then(([a, r, e, p, t]) => {
-        setAssets(Object.fromEntries(a.map((x) => [x.id, x])))
+    Promise.all([api.equipment.list(), api.rules.list(), api.events.list(), api.parts.list({ lowStock: true }), api.equipment.list({ onLoan: true })])
+      .then(([eq, r, e, p, loaned]) => {
+        setEquipment(Object.fromEntries(eq.map((x) => [x.id, x])))
         setRules(r.sort((a, b) => daysRelative(a) - daysRelative(b)))
         setEvents(e.slice(0, 5))
         setLowStockParts(p)
-        setLoanedTools(t)
+        setLoanedEquipment(loaned)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -110,11 +110,11 @@ export default function DashboardPage() {
               {overdue.map((r) => (
                 <li key={r.id}>
                   <Link
-                    href={`/assets/${r.assetId}/log`}
+                    href={`/equipment/${r.equipmentId}/log`}
                     className="flex items-center justify-between bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3"
                   >
                     <div>
-                      <p className="font-semibold text-slate-800 dark:text-slate-100">{assets[r.assetId]?.name ?? '…'}</p>
+                      <p className="font-semibold text-slate-800 dark:text-slate-100">{equipment[r.equipmentId]?.name ?? '…'}</p>
                       {r.name && <p className="text-xs text-slate-600 dark:text-slate-300">{r.name}</p>}
                       <p className="text-xs text-red-600 dark:text-red-400 font-medium">{dueLabel(r)}</p>
                     </div>
@@ -134,11 +134,11 @@ export default function DashboardPage() {
               {upcoming.map((r) => (
                 <li key={r.id}>
                   <Link
-                    href={`/assets/${r.assetId}`}
+                    href={`/equipment/${r.equipmentId}`}
                     className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3"
                   >
                     <div>
-                      <p className="font-medium text-slate-800 dark:text-slate-100">{assets[r.assetId]?.name ?? '…'}</p>
+                      <p className="font-medium text-slate-800 dark:text-slate-100">{equipment[r.equipmentId]?.name ?? '…'}</p>
                       {r.name && <p className="text-xs text-slate-600 dark:text-slate-300">{r.name}</p>}
                       <p className="text-xs text-amber-700 dark:text-amber-400">{dueLabel(r)}</p>
                     </div>
@@ -157,7 +157,7 @@ export default function DashboardPage() {
             <p className="font-medium text-slate-600 dark:text-slate-300">All caught up!</p>
             {rules.length === 0 && (
               <p className="text-sm mt-1">
-                <Link href="/assets/new" className="text-blue-500 underline">Add an asset</Link> to start tracking.
+                <Link href="/equipment/new" className="text-blue-500 underline">Add equipment</Link> to start tracking.
               </p>
             )}
           </div>
@@ -189,16 +189,16 @@ export default function DashboardPage() {
         )}
 
         {/* Tools out on loan */}
-        {!loading && loanedTools.length > 0 && (
+        {!loading && loanedEquipment.length > 0 && (
           <section>
             <h2 className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">Out on loan</h2>
             <ul className="space-y-2">
-              {loanedTools.map((t) => {
+              {loanedEquipment.map((t) => {
                 const loan = t.loans?.find((l) => !l.returnedAt)
                 return (
                   <li key={t.id}>
                     <Link
-                      href={`/tools/${t.id}`}
+                      href={`/equipment/${t.id}`}
                       className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3"
                     >
                       <div>
@@ -226,11 +226,11 @@ export default function DashboardPage() {
               {events.map((e) => (
                 <li key={e.id}>
                   <Link
-                    href={`/assets/${e.assetId}`}
+                    href={`/equipment/${e.equipmentId}`}
                     className="flex items-center justify-between bg-white dark:bg-slate-800 rounded-xl px-4 py-3 shadow-sm border border-slate-100 dark:border-slate-700"
                   >
                     <div>
-                      <p className="font-medium text-slate-800 dark:text-slate-100">{assets[e.assetId]?.name ?? '…'}</p>
+                      <p className="font-medium text-slate-800 dark:text-slate-100">{equipment[e.equipmentId]?.name ?? '…'}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{e.type}</p>
                     </div>
                     <span className="text-xs text-slate-400 dark:text-slate-500">{formatDate(e.createdAt)}</span>

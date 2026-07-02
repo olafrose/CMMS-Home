@@ -5,18 +5,6 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { Part } from '@/lib/types'
 
-function storageBreadcrumb(part: Part): string {
-  if (part.box) {
-    const shelf = part.box.shelf
-    if (shelf) return `${part.box.name} › ${shelf.name} › ${shelf.location.name}`
-    if (part.box.location) return `${part.box.name} › ${part.box.location.name}`
-    return part.box.name
-  }
-  if (part.shelf) return `${part.shelf.name} › ${part.shelf.location.name}`
-  if (part.location) return part.location.name
-  return 'No location'
-}
-
 function PartRow({ part }: { part: Part }) {
   const lowStock = part.minQuantity != null && part.quantity <= part.minQuantity
   return (
@@ -26,15 +14,15 @@ function PartRow({ part }: { part: Part }) {
     >
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{part.name}</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{storageBreadcrumb(part)}</p>
-        {(part.partCategory || part.asset) && (
+        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{part.storageLocation?.name ?? 'No location'}</p>
+        {(part.partCategory || part.equipment) && (
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {part.partCategory && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
                 {part.partCategory.name}
               </span>
             )}
-            {part.asset && <span className="text-xs text-slate-400 dark:text-slate-500 truncate">for {part.asset.name}</span>}
+            {part.equipment && <span className="text-xs text-slate-400 dark:text-slate-500 truncate">for {part.equipment.name}</span>}
           </div>
         )}
       </div>
@@ -105,7 +93,7 @@ export default function PartsPage() {
 
   const assetOptions = useMemo(() => {
     const seen = new Map<string, string>()
-    for (const p of parts) if (p.assetId && p.asset) seen.set(p.assetId, p.asset.name)
+    for (const p of parts) if (p.equipmentId && p.equipment) seen.set(p.equipmentId, p.equipment.name)
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [parts])
 
@@ -116,7 +104,7 @@ export default function PartsPage() {
   }, [parts])
 
   const filtered = parts.filter(p =>
-    (!activeAsset || p.assetId === activeAsset) &&
+    (!activeAsset || p.equipmentId === activeAsset) &&
     (!activeCategory || p.partCategoryId === activeCategory)
   )
 

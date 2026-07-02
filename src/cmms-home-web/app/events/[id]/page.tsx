@@ -29,8 +29,8 @@ function formatDate(iso: string) {
 export default function EventDetailPage() {
   const { id: eventId } = useParams<{ id: string }>()
   const searchParams = useSearchParams()
-  const assetId = searchParams.get('asset_id') ?? ''
-  const backHref = assetId ? `/assets/${assetId}` : '/assets'
+  const equipmentId = searchParams.get('equipment_id') ?? ''
+  const backHref = equipmentId ? `/equipment/${equipmentId}` : '/assets'
 
   const [event, setEvent] = useState<MaintenanceEvent | null>(null)
   const [usages, setUsages] = useState<PartUsage[]>([])

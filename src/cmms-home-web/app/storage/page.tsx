@@ -1,308 +1,187 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Location, Shelf, StorageBox } from '@/lib/types'
+import { childrenOf, locationPath, DEFAULT_LOCATION_ICON } from '@/lib/storage'
+import type { StorageLocation } from '@/lib/types'
 
-function ShelfSection({ shelf, boxes, shelves, locations, onRenameShelf, onDeleteShelf, onAddBox, onRenameBox, onDeleteBox }: {
-  shelf: Shelf
-  boxes: StorageBox[]
-  shelves: Shelf[]
-  locations: Location[]
-  onRenameShelf: (id: string, name: string, locationId: string) => Promise<void>
-  onDeleteShelf: (shelf: Shelf) => Promise<void>
-  onAddBox: (name: string, shelfId: string) => Promise<void>
-  onRenameBox: (id: string, name: string, shelfId?: string, locationId?: string) => Promise<void>
-  onDeleteBox: (box: StorageBox) => Promise<void>
+const ICON_CHOICES = ['🏠', '🏢', '🚪', '🗄️', '📦', '🧰', '🗃️', '🧺', '🪜', '🚗', '🧊', '🔧', '🧯', '📁']
+
+function descendantIds(id: string, all: StorageLocation[]): Set<string> {
+  const out = new Set<string>([id])
+  let added = true
+  while (added) {
+    added = false
+    for (const l of all) {
+      if (l.parentId && out.has(l.parentId) && !out.has(l.id)) { out.add(l.id); added = true }
+    }
+  }
+  return out
+}
+
+function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
+  node: StorageLocation
+  all: StorageLocation[]
+  depth: number
+  onAdd: (parentId: string, name: string) => Promise<void>
+  onRename: (id: string, name: string, icon?: string) => Promise<void>
+  onMove: (id: string, parentId?: string) => Promise<void>
+  onDelete: (node: StorageLocation) => Promise<void>
 }) {
-  const [editingShelf, setEditingShelf] = useState(false)
-  const [shelfName, setShelfName] = useState(shelf.name)
-  const [shelfLocationId, setShelfLocationId] = useState(shelf.locationId)
+  const kids = childrenOf(node.id, all)
   const [expanded, setExpanded] = useState(false)
-  const [newBoxName, setNewBoxName] = useState('')
-  const [editingBoxId, setEditingBoxId] = useState<string | null>(null)
-  const [editBoxName, setEditBoxName] = useState('')
-  const [movingBoxId, setMovingBoxId] = useState<string | null>(null)
-  const [moveLocationId, setMoveLocationId] = useState('')
-  const [moveShelfId, setMoveShelfId] = useState('')
-  const editRef = useRef<HTMLInputElement>(null)
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(node.name)
+  const [icon, setIcon] = useState(node.icon ?? '')
+  const [adding, setAdding] = useState(false)
+  const [childName, setChildName] = useState('')
+  const [moving, setMoving] = useState(false)
 
-  useEffect(() => { if (editingBoxId) editRef.current?.focus() }, [editingBoxId])
+  const invalidParents = useMemo(() => descendantIds(node.id, all), [node.id, all])
 
   return (
-    <li className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-      {editingShelf ? (
-        <div className="space-y-2 p-3">
-          <input type="text" value={shelfName} onChange={e => setShelfName(e.target.value)}
-            className="field w-full text-sm" autoFocus />
-          <div className="flex gap-2">
-            <select value={shelfLocationId} onChange={e => setShelfLocationId(e.target.value)} className="field flex-1 text-sm">
-              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-            <button onClick={async () => { await onRenameShelf(shelf.id, shelfName.trim(), shelfLocationId); setEditingShelf(false) }}
+    <li>
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700"
+        style={{ marginLeft: depth * 16 }}>
+        <button onClick={() => setExpanded(v => !v)} className="text-slate-400 w-4 text-sm" aria-label="Expand">
+          {kids.length ? (expanded ? '▾' : '▸') : '·'}
+        </button>
+        {editing ? (
+          <input autoFocus value={name} onChange={e => setName(e.target.value)}
+            onKeyDown={async e => { if (e.key === 'Enter') { await onRename(node.id, name.trim(), icon || undefined); setEditing(false) } if (e.key === 'Escape') setEditing(false) }}
+            className="field flex-1 text-sm py-1" />
+        ) : (
+          <span className="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate">
+            <span className="mr-1.5">{node.icon || DEFAULT_LOCATION_ICON}</span>{node.name}
+          </span>
+        )}
+        {editing ? (
+          <>
+            <button onClick={async () => { await onRename(node.id, name.trim(), icon || undefined); setEditing(false) }}
               className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
-            <button onClick={() => setEditingShelf(false)} className="text-slate-400 text-sm px-1">✕</button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 px-4 py-3">
-          <button onClick={() => setExpanded(v => !v)} className="flex-1 flex items-center gap-2 text-left">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{shelf.name}</span>
-            <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{shelf.location.name}</span>
-            <span className="ml-auto text-slate-400 text-sm">{expanded ? '▲' : '▼'}</span>
-          </button>
-          <Link href={`/storage/shelf/${shelf.id}`} className="text-slate-400 hover:text-blue-500 text-lg leading-none" aria-label="Contents">🔍</Link>
-          <button onClick={() => setEditingShelf(true)} className="text-slate-400 hover:text-blue-500 text-lg leading-none" aria-label="Edit">✏️</button>
-          <button onClick={() => onDeleteShelf(shelf)} className="text-slate-400 hover:text-red-500 text-lg leading-none" aria-label="Delete">🗑️</button>
+            <button onClick={() => setEditing(false)} className="text-slate-400 text-sm px-1">✕</button>
+          </>
+        ) : (
+          <>
+            <Link href={`/storage/${node.id}`} className="text-slate-400 hover:text-blue-500" aria-label="Contents">🔍</Link>
+            <button onClick={() => { setAdding(v => !v); setExpanded(true) }} className="text-slate-400 hover:text-blue-500" aria-label="Add child">＋</button>
+            <button onClick={() => { setEditing(true); setName(node.name); setIcon(node.icon ?? '') }} className="text-slate-400 hover:text-blue-500" aria-label="Rename">✏️</button>
+            <button onClick={() => setMoving(v => !v)} className="text-slate-400 hover:text-amber-500" aria-label="Move">↗️</button>
+            <button onClick={() => onDelete(node)} className="text-slate-400 hover:text-red-500" aria-label="Delete">🗑️</button>
+          </>
+        )}
+      </div>
+
+      {editing && (
+        <div className="flex items-center gap-1 flex-wrap my-1" style={{ marginLeft: depth * 16 + 24 }}>
+          {ICON_CHOICES.map(c => (
+            <button key={c} onClick={() => setIcon(c)}
+              className={`w-7 h-7 rounded-lg text-base leading-none ${icon === c ? 'bg-blue-100 dark:bg-blue-900/40 ring-1 ring-blue-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+              {c}
+            </button>
+          ))}
+          {icon && <button onClick={() => setIcon('')} className="text-xs text-slate-400 underline px-1">default</button>}
         </div>
       )}
 
-      {expanded && (
-        <div className="border-t border-slate-100 dark:border-slate-700 px-4 py-3 space-y-2 bg-slate-50 dark:bg-slate-900/30">
-          {boxes.map(box => (
-            <div key={box.id}>
-              {movingBoxId === box.id ? (
-                <div className="space-y-2">
-                  <select value={moveLocationId} onChange={e => { setMoveLocationId(e.target.value); setMoveShelfId('') }} className="field w-full text-sm">
-                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                  <div className="flex gap-2">
-                    <select value={moveShelfId} onChange={e => setMoveShelfId(e.target.value)} className="field flex-1 text-sm">
-                      <option value="">No shelf (freestanding)</option>
-                      {shelves.filter(s => s.locationId === moveLocationId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                    <button onClick={async () => { await onRenameBox(box.id, box.name, moveShelfId || undefined, moveShelfId ? undefined : moveLocationId || undefined); setMovingBoxId(null) }}
-                      className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
-                    <button onClick={() => setMovingBoxId(null)} className="text-slate-400 text-sm px-1">✕</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  {editingBoxId === box.id ? (
-                    <>
-                      <input ref={editRef} type="text" value={editBoxName} onChange={e => setEditBoxName(e.target.value)}
-                        onKeyDown={async e => { if (e.key === 'Enter') { await onRenameBox(box.id, editBoxName.trim(), shelf.id); setEditingBoxId(null) } if (e.key === 'Escape') setEditingBoxId(null) }}
-                        className="field flex-1 text-sm" />
-                      <button onClick={async () => { await onRenameBox(box.id, editBoxName.trim(), shelf.id); setEditingBoxId(null) }}
-                        className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
-                      <button onClick={() => setEditingBoxId(null)} className="text-slate-400 text-sm px-1">✕</button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="flex-1 text-sm text-slate-600 dark:text-slate-300">📦 {box.name}</span>
-                      <Link href={`/storage/box/${box.id}`} className="text-slate-400 hover:text-blue-500 text-base leading-none" aria-label="Contents">🔍</Link>
-                      <button onClick={() => { setMovingBoxId(box.id); setMoveLocationId(shelf.locationId); setMoveShelfId(shelf.id) }} className="text-slate-400 hover:text-amber-500 text-base leading-none" aria-label="Move">↗️</button>
-                      <button onClick={() => { setEditingBoxId(box.id); setEditBoxName(box.name) }} className="text-slate-400 hover:text-blue-500 text-base leading-none">✏️</button>
-                      <button onClick={() => onDeleteBox(box)} className="text-slate-400 hover:text-red-500 text-base leading-none">🗑️</button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-          <div className="flex gap-2 pt-1">
-            <input type="text" value={newBoxName} onChange={e => setNewBoxName(e.target.value)}
-              onKeyDown={async e => { if (e.key === 'Enter' && newBoxName.trim()) { await onAddBox(newBoxName.trim(), shelf.id); setNewBoxName('') } }}
-              placeholder="New box name" className="field flex-1 text-sm" />
-            <button onClick={async () => { if (newBoxName.trim()) { await onAddBox(newBoxName.trim(), shelf.id); setNewBoxName('') } }}
-              disabled={!newBoxName.trim()} className="bg-blue-600 text-white text-sm font-semibold px-3 py-2 rounded-xl disabled:opacity-50">
-              Add
-            </button>
-          </div>
+      {moving && (
+        <div className="flex items-center gap-2 my-1" style={{ marginLeft: depth * 16 + 24 }}>
+          <span className="text-xs text-slate-500">Move under</span>
+          <select defaultValue={node.parentId ?? ''} onChange={async e => { await onMove(node.id, e.target.value || undefined); setMoving(false) }}
+            className="field flex-1 text-sm py-1">
+            <option value="">Top level</option>
+            {all.filter(l => !invalidParents.has(l.id)).map(l => (
+              <option key={l.id} value={l.id}>{locationPath(l.id, all)}</option>
+            ))}
+          </select>
+          <button onClick={() => setMoving(false)} className="text-slate-400 text-sm">✕</button>
         </div>
+      )}
+
+      {adding && (
+        <div className="flex items-center gap-2 my-1" style={{ marginLeft: depth * 16 + 24 }}>
+          <input autoFocus value={childName} onChange={e => setChildName(e.target.value)}
+            onKeyDown={async e => { if (e.key === 'Enter' && childName.trim()) { await onAdd(node.id, childName.trim()); setChildName('') } }}
+            placeholder="New place inside…" className="field flex-1 text-sm py-1" />
+          <button onClick={async () => { if (childName.trim()) { await onAdd(node.id, childName.trim()); setChildName('') } }}
+            disabled={!childName.trim()} className="bg-blue-600 text-white text-sm font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50">Add</button>
+        </div>
+      )}
+
+      {expanded && kids.length > 0 && (
+        <ul className="space-y-1 mt-1">
+          {kids.map(k => (
+            <Node key={k.id} node={k} all={all} depth={depth + 1}
+              onAdd={onAdd} onRename={onRename} onMove={onMove} onDelete={onDelete} />
+          ))}
+        </ul>
       )}
     </li>
   )
 }
 
 export default function StoragePage() {
-  const [shelves, setShelves] = useState<Shelf[]>([])
-  const [boxes, setBoxes] = useState<StorageBox[]>([])
-  const [locations, setLocations] = useState<Location[]>([])
+  const [all, setAll] = useState<StorageLocation[]>([])
   const [loading, setLoading] = useState(true)
-  const [newShelfName, setNewShelfName] = useState('')
-  const [newShelfLocationId, setNewShelfLocationId] = useState('')
-  const [newBoxName, setNewBoxName] = useState('')
-  const [newBoxLocationId, setNewBoxLocationId] = useState('')
-  const [addingShelf, setAddingShelf] = useState(false)
-  const [editingFreeBoxId, setEditingFreeBoxId] = useState<string | null>(null)
-  const [editFreeBoxName, setEditFreeBoxName] = useState('')
-  const [movingFreeBoxId, setMovingFreeBoxId] = useState<string | null>(null)
-  const [moveFreeLocationId, setMoveFreeLocationId] = useState('')
-  const [moveFreeShelfId, setMoveFreeShelfId] = useState('')
+  const [newRoot, setNewRoot] = useState('')
 
-  useEffect(() => {
-    Promise.all([api.shelves.list(), api.boxes.list(), api.locations.list()])
-      .then(([s, b, l]) => {
-        setShelves(s); setBoxes(b); setLocations(l)
-        if (l.length > 0) { setNewShelfLocationId(l[0].id); setNewBoxLocationId(l[0].id) }
-      })
-      .finally(() => setLoading(false))
-  }, [])
+  useEffect(() => { api.storageLocations.list().then(setAll).finally(() => setLoading(false)) }, [])
 
-  async function addShelf() {
-    const name = newShelfName.trim()
-    if (!name || !newShelfLocationId) return
-    setAddingShelf(true)
+  async function addRoot() {
+    const name = newRoot.trim()
+    if (!name) return
+    const loc = await api.storageLocations.create(name)
+    setAll(p => [...p, loc]); setNewRoot('')
+  }
+  async function addChild(parentId: string, name: string) {
+    const loc = await api.storageLocations.create(name, parentId)
+    setAll(p => [...p, loc])
+  }
+  async function rename(id: string, name: string, icon?: string) {
+    if (!name) return
+    const cur = all.find(l => l.id === id)
+    const u = await api.storageLocations.update(id, name, cur?.parentId, icon)
+    setAll(p => p.map(l => l.id === id ? u : l))
+  }
+  async function move(id: string, parentId?: string) {
+    const cur = all.find(l => l.id === id); if (!cur) return
     try {
-      const shelf = await api.shelves.create(name, newShelfLocationId)
-      setShelves(prev => [...prev, shelf].sort((a, b) => a.name.localeCompare(b.name)))
-      setNewShelfName('')
-    } finally { setAddingShelf(false) }
+      const u = await api.storageLocations.update(id, cur.name, parentId, cur.icon)
+      setAll(p => p.map(l => l.id === id ? u : l))
+    } catch { alert('Move not allowed (would create a cycle or exceed max depth).') }
+  }
+  async function del(loc: StorageLocation) {
+    if (!confirm(`Delete "${loc.name}"? Anything stored here becomes unassigned.`)) return
+    try { await api.storageLocations.delete(loc.id); setAll(p => p.filter(l => l.id !== loc.id)) }
+    catch { alert('Empty or move the places inside this one first.') }
   }
 
-  async function renameShelf(id: string, name: string, locationId: string) {
-    const updated = await api.shelves.update(id, name, locationId)
-    setShelves(prev => prev.map(s => s.id === id ? updated : s))
-  }
-
-  async function deleteShelf(shelf: Shelf) {
-    if (!confirm(`Delete shelf "${shelf.name}"? Boxes on this shelf will become freestanding.`)) return
-    await api.shelves.delete(shelf.id)
-    setShelves(prev => prev.filter(s => s.id !== shelf.id))
-    setBoxes(prev => prev.map(b => b.shelfId === shelf.id ? { ...b, shelfId: undefined, shelf: undefined } : b))
-  }
-
-  async function addBox(name: string, shelfId?: string, locationId?: string) {
-    const box = await api.boxes.create(name, shelfId, locationId)
-    setBoxes(prev => [...prev, box].sort((a, b) => a.name.localeCompare(b.name)))
-  }
-
-  async function renameBox(id: string, name: string, shelfId?: string, locationId?: string) {
-    const updated = await api.boxes.update(id, name, shelfId, locationId)
-    setBoxes(prev => prev.map(b => b.id === id ? updated : b))
-  }
-
-  async function deleteBox(box: StorageBox) {
-    if (!confirm(`Delete box "${box.name}"? Parts inside will lose their box assignment.`)) return
-    await api.boxes.delete(box.id)
-    setBoxes(prev => prev.filter(b => b.id !== box.id))
-  }
-
-  const freestandingBoxes = boxes.filter(b => !b.shelfId)
+  const roots = childrenOf(undefined, all)
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/parts" className="text-blue-500 text-sm">‹ Parts</Link>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Storage</h1>
         <Link href="/labels" className="ml-auto text-sm text-blue-500 font-medium">🖨️ Labels</Link>
       </div>
 
+      <div className="flex gap-2 mb-6">
+        <input value={newRoot} onChange={e => setNewRoot(e.target.value)} onKeyDown={e => e.key === 'Enter' && addRoot()}
+          placeholder="New place (e.g. Garage)" className="field flex-1" />
+        <button onClick={addRoot} disabled={!newRoot.trim()}
+          className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl disabled:opacity-50">Add</button>
+      </div>
+
       {loading && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}
+      {!loading && roots.length === 0 && <p className="text-slate-400 dark:text-slate-500 text-sm">No places yet. Add one above.</p>}
 
-      {/* Add shelf */}
-      {locations.length === 0 && !loading && (
-        <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">
-          Add a <Link href="/locations" className="text-blue-500 underline">location</Link> first before creating shelves.
-        </p>
-      )}
-      {locations.length > 0 && (
-        <div className="space-y-2 mb-6">
-          <input type="text" value={newShelfName} onChange={e => setNewShelfName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addShelf()}
-            placeholder="New shelf name" className="field w-full" />
-          <div className="flex gap-2">
-            <select value={newShelfLocationId} onChange={e => setNewShelfLocationId(e.target.value)} className="field flex-1">
-              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-            <button onClick={addShelf} disabled={addingShelf || !newShelfName.trim()}
-              className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl disabled:opacity-50">
-              {addingShelf ? '…' : 'Add Shelf'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Shelves */}
-      {shelves.length > 0 && (
-        <section className="mb-6">
-          <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Shelves</h2>
-          <ul className="space-y-2">
-            {shelves.map(shelf => (
-              <ShelfSection key={shelf.id} shelf={shelf}
-                boxes={boxes.filter(b => b.shelfId === shelf.id)}
-                shelves={shelves}
-                locations={locations}
-                onRenameShelf={renameShelf}
-                onDeleteShelf={deleteShelf}
-                onAddBox={(name, shelfId) => addBox(name, shelfId)}
-                onRenameBox={renameBox}
-                onDeleteBox={deleteBox}
-              />
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Freestanding boxes */}
-      <section>
-        <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Freestanding Boxes</h2>
-        {locations.length > 0 && (
-          <div className="space-y-2 mb-3">
-            <input type="text" value={newBoxName} onChange={e => setNewBoxName(e.target.value)}
-              onKeyDown={async e => { if (e.key === 'Enter' && newBoxName.trim()) { await addBox(newBoxName.trim(), undefined, newBoxLocationId); setNewBoxName('') } }}
-              placeholder="New box name" className="field w-full" />
-            <div className="flex gap-2">
-            <select value={newBoxLocationId} onChange={e => setNewBoxLocationId(e.target.value)} className="field flex-1">
-              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-            <button onClick={async () => { if (newBoxName.trim()) { await addBox(newBoxName.trim(), undefined, newBoxLocationId); setNewBoxName('') } }}
-              disabled={!newBoxName.trim()} className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl disabled:opacity-50">
-              Add Box
-            </button>
-            </div>
-          </div>
-        )}
-        {freestandingBoxes.length === 0 && (
-          <p className="text-sm text-slate-400 dark:text-slate-500">No freestanding boxes.</p>
-        )}
-        <ul className="space-y-2">
-          {freestandingBoxes.map(box => (
-            <li key={box.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm px-4 py-3">
-              {movingFreeBoxId === box.id ? (
-                <div className="space-y-2">
-                  <select value={moveFreeLocationId} onChange={e => { setMoveFreeLocationId(e.target.value); setMoveFreeShelfId('') }} className="field w-full text-sm">
-                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                  <div className="flex gap-2">
-                    <select value={moveFreeShelfId} onChange={e => setMoveFreeShelfId(e.target.value)} className="field flex-1 text-sm">
-                      <option value="">No shelf (freestanding)</option>
-                      {shelves.filter(s => s.locationId === moveFreeLocationId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                    <button onClick={async () => { await renameBox(box.id, box.name, moveFreeShelfId || undefined, moveFreeShelfId ? undefined : moveFreeLocationId || undefined); setMovingFreeBoxId(null) }}
-                      className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
-                    <button onClick={() => setMovingFreeBoxId(null)} className="text-slate-400 text-sm px-1">✕</button>
-                  </div>
-                </div>
-              ) : editingFreeBoxId === box.id ? (
-                <div className="flex items-center gap-3">
-                  <input type="text" value={editFreeBoxName} onChange={e => setEditFreeBoxName(e.target.value)}
-                    onKeyDown={async e => { if (e.key === 'Enter') { await renameBox(box.id, editFreeBoxName.trim(), undefined, box.locationId); setEditingFreeBoxId(null) } if (e.key === 'Escape') setEditingFreeBoxId(null) }}
-                    className="field flex-1 text-sm" autoFocus />
-                  <button onClick={async () => { await renameBox(box.id, editFreeBoxName.trim(), undefined, box.locationId); setEditingFreeBoxId(null) }}
-                    className="text-blue-600 dark:text-blue-400 font-semibold text-sm px-2">Save</button>
-                  <button onClick={() => setEditingFreeBoxId(null)} className="text-slate-400 text-sm px-1">✕</button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-                    📦 {box.name}
-                    {box.location && <span className="ml-2 text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{box.location.name}</span>}
-                  </span>
-                  <Link href={`/storage/box/${box.id}`} className="text-slate-400 hover:text-blue-500 text-lg leading-none" aria-label="Contents">🔍</Link>
-                  <button onClick={() => { setMovingFreeBoxId(box.id); setMoveFreeLocationId(box.locationId ?? locations[0]?.id ?? ''); setMoveFreeShelfId('') }}
-                    className="text-slate-400 hover:text-amber-500 text-lg leading-none" aria-label="Move">↗️</button>
-                  <button onClick={() => { setEditingFreeBoxId(box.id); setEditFreeBoxName(box.name) }}
-                    className="text-slate-400 hover:text-blue-500 text-lg leading-none" aria-label="Edit">✏️</button>
-                  <button onClick={() => deleteBox(box)} className="text-slate-400 hover:text-red-500 text-lg leading-none">🗑️</button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <ul className="space-y-1">
+        {roots.map(r => (
+          <Node key={r.id} node={r} all={all} depth={0}
+            onAdd={addChild} onRename={rename} onMove={move} onDelete={del} />
+        ))}
+      </ul>
     </div>
   )
 }
