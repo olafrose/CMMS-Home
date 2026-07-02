@@ -96,12 +96,15 @@ export default function AssetsPage() {
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Assets</h1>
-        <Link
-          href="/assets/new"
-          className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow"
-        >
-          + New
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/labels" className="text-sm text-blue-500 font-medium">🖨️ Labels</Link>
+          <Link
+            href="/assets/new"
+            className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow"
+          >
+            + New
+          </Link>
+        </div>
       </div>
 
       {hasFilterOptions && (

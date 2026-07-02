@@ -187,6 +187,7 @@ export default function StoragePage() {
       <div className="flex items-center gap-3 mb-6">
         <Link href="/parts" className="text-blue-500 text-sm">‹ Parts</Link>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Storage</h1>
+        <Link href="/labels" className="ml-auto text-sm text-blue-500 font-medium">🖨️ Labels</Link>
       </div>
 
       {loading && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}

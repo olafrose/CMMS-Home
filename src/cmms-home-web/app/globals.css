@@ -21,3 +21,43 @@
            focus:outline-none focus:ring-2 focus:ring-blue-500;
   }
 }
+
+/* Label sheet preview — reads as a physical white sheet on screen */
+.label-page {
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e2e8f0;
+  margin: 0 auto 1rem;
+}
+
+/* Print: labels only */
+@media print {
+  nav,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+  .label-page {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    break-after: page;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .label-page * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .label-page > * {
+    break-inside: avoid;
+  }
+  .label-page:last-child {
+    break-after: auto;
+  }
+}

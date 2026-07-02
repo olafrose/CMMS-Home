@@ -63,10 +63,13 @@ Next.js 16 App Router. All pages are `'use client'` with client-side data fetchi
 ```
 ├── lib/types.ts             # TypeScript types matching backend models exactly
 ├── lib/api.ts               # Typed fetch wrapper — all API calls go through here
+├── lib/labelFormats.ts      # sheet/roll label format presets (Avery, Brother, Dymo)
 ├── components/BottomNav.tsx # Fixed bottom tab bar (Home / Assets / Scan)
+├── components/PrintLabel.tsx # one printable QR label, fills its cell
 └── app/
     ├── layout.tsx           # Root layout: PWA meta, BottomNav
     ├── page.tsx             # Dashboard: overdue/upcoming rules + recent events
+    ├── labels/page.tsx      # print QR labels for assets/boxes/shelves (batch or single)
     ├── assets/
     │   ├── page.tsx         # Asset list
     │   ├── new/page.tsx     # Create asset form
@@ -113,6 +116,7 @@ ToolCategories: CRUD /tool-categories
 
 - **Quick entry**: Logging a maintenance event must be completable in ≤10 seconds
 - **QR code as primary entry point**: Each asset gets a QR code; scanning opens the asset and quick-log flow
+- **Printable labels**: Asset, box, and shelf QR codes can be printed as physical labels from `/labels` (batch select + editable sheet layout for peel-and-stick sheets, or label-printer roll formats), via browser `window.print()`.
 - **Minimal required fields**: Only `Name` is required for assets; `Type` for events
 - **Mobile-first**: All UI decisions should prioritize mobile usability
 

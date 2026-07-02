@@ -333,7 +333,10 @@ export default function AssetDetailPage() {
 
       {/* QR Code */}
       <section>
-        <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">QR Code</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">QR Code</h2>
+          <Link href={`/labels?only=asset:${id}`} className="text-sm text-blue-500 font-medium">🖨️ Print label</Link>
+        </div>
         <div className={`${card} p-5 flex flex-col items-center gap-2`}>
           {origin && <QRCodeSVG value={logUrl} size={160} bgColor="transparent" fgColor="currentColor"
             className="text-slate-900 dark:text-slate-100" />}
