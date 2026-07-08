@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { DocumentPreviewButton } from '@/components/DocumentPreview'
+import EntityCombobox from '@/components/EntityCombobox'
+import { categoryBadgeStyle } from '@/lib/documents'
 import type { Equipment, Document, DocumentCategory, DocumentStatus, MaintenanceEvent } from '@/lib/types'
 
-const DOCUMENT_CATEGORIES: DocumentCategory[] = ['Manual', 'Warranty', 'Receipt', 'Invoice', 'Photo', 'Other']
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'Unclassified', label: 'Unclassified' },
   { value: 'Classified', label: 'Classified' },
@@ -13,15 +14,6 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'Missing', label: 'Missing' },
   { value: '', label: 'All' },
 ]
-
-const categoryColor: Record<DocumentCategory, string> = {
-  Manual: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
-  Warranty: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
-  Receipt: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
-  Invoice: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
-  Photo: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
-  Other: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
-}
 
 const statusColor: Record<DocumentStatus, string> = {
   Unclassified: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
@@ -50,12 +42,14 @@ interface LinkRow {
 interface ClassifyFormProps {
   doc: Document
   equipment: Equipment[]
+  categories: DocumentCategory[]
   onClassified: (doc: Document) => void
   onCancel: () => void
 }
 
-function ClassifyForm({ doc, equipment, onClassified, onCancel }: ClassifyFormProps) {
-  const [category, setCategory] = useState<DocumentCategory>('Manual')
+function ClassifyForm({ doc, equipment, categories, onClassified, onCancel }: ClassifyFormProps) {
+  const [cats, setCats] = useState<DocumentCategory[]>(categories)
+  const [categoryId, setCategoryId] = useState<string | null>(doc.categoryId ?? null)
   const [title, setTitle] = useState(doc.title ?? '')
   const [linkRows, setLinkRows] = useState<LinkRow[]>([{ equipmentId: '', eventId: '', events: [], loadingEvents: false }])
   const [saving, setSaving] = useState(false)
@@ -94,7 +88,7 @@ function ClassifyForm({ doc, equipment, onClassified, onCancel }: ClassifyFormPr
     setError('')
     try {
       const updated = await api.documents.classify(doc.id, {
-        category,
+        categoryId: categoryId || undefined,
         title: title.trim() || undefined,
         // Each link is exactly one target: the event if one was picked, else the equipment.
         links: validLinks.map(r => r.eventId
@@ -111,10 +105,14 @@ function ClassifyForm({ doc, equipment, onClassified, onCancel }: ClassifyFormPr
   return (
     <form onSubmit={handleSubmit} className="mt-3 space-y-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-blue-200 dark:border-blue-800 px-4 py-4">
       <div>
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Category *</label>
-        <select value={category} onChange={e => setCategory(e.target.value as DocumentCategory)} className="field w-full">
-          {DOCUMENT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Category</label>
+        <EntityCombobox
+          items={cats}
+          value={categoryId}
+          onChange={setCategoryId}
+          onCreate={async (name) => { const c = await api.documentCategories.create(name); setCats(prev => [...prev, c]); return c }}
+          placeholder="Search or create…"
+        />
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title (optional)</label>
@@ -176,11 +174,12 @@ function ClassifyForm({ doc, equipment, onClassified, onCancel }: ClassifyFormPr
 interface DocCardProps {
   doc: Document
   equipment: Equipment[]
+  categories: DocumentCategory[]
   onRemove: (id: string) => void
   onUpdate: (doc: Document) => void
 }
 
-function DocCard({ doc, equipment, onRemove, onUpdate }: DocCardProps) {
+function DocCard({ doc, equipment, categories, onRemove, onUpdate }: DocCardProps) {
   const [classifying, setClassifying] = useState(false)
   const [ignoring, setIgnoring] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -223,8 +222,8 @@ function DocCard({ doc, equipment, onRemove, onUpdate }: DocCardProps) {
             {doc.status}
           </span>
           {doc.category && (
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${categoryColor[doc.category]}`}>
-              {doc.category}
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={categoryBadgeStyle(doc.category.color)}>
+              {doc.category.name}
             </span>
           )}
         </div>
@@ -270,6 +269,7 @@ function DocCard({ doc, equipment, onRemove, onUpdate }: DocCardProps) {
         <ClassifyForm
           doc={doc}
           equipment={equipment}
+          categories={categories}
           onClassified={(updated) => { onUpdate(updated); setClassifying(false) }}
           onCancel={() => setClassifying(false)}
         />
@@ -281,6 +281,7 @@ function DocCard({ doc, equipment, onRemove, onUpdate }: DocCardProps) {
 export default function DocumentsPage() {
   const [docs, setDocs] = useState<Document[]>([])
   const [equipment, setEquipment] = useState<Equipment[]>([])
+  const [categories, setCategories] = useState<DocumentCategory[]>([])
   const [statusFilter, setStatusFilter] = useState('Unclassified')
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
@@ -296,6 +297,7 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     api.equipment.list().then(setEquipment).catch(() => {})
+    api.documentCategories.list().then(setCategories).catch(() => {})
     loadDocs(statusFilter)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -413,6 +415,7 @@ export default function DocumentsPage() {
               key={doc.id}
               doc={doc}
               equipment={equipment}
+              categories={categories}
               onRemove={handleRemove}
               onUpdate={handleUpdate}
             />

@@ -16,6 +16,7 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<PartCategory> PartCategories => Set<PartCategory>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
+    public DbSet<DocumentCategory> DocumentCategories => Set<DocumentCategory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -145,6 +146,12 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .WithOne(l => l.Document)
             .HasForeignKey(l => l.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Document>()
+            .HasOne(d => d.Category)
+            .WithMany()
+            .HasForeignKey(d => d.CategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // A document link points at one Equipment or one MaintenanceEvent.
         modelBuilder.Entity<DocumentLink>()

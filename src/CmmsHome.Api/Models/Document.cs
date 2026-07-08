@@ -11,6 +11,7 @@ public class Document
     public DateTime LastModifiedUtc { get; set; }
     public DateTime DiscoveredAt { get; set; }
     public DocumentStatus Status { get; set; }
+    public Guid? CategoryId { get; set; }
     public DocumentCategory? Category { get; set; }
     public string? Title { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -19,4 +20,3 @@ public class Document
 }
 
 public enum DocumentStatus { Unclassified, Classified, Ignored, Missing }
-public enum DocumentCategory { Manual, Warranty, Receipt, Invoice, Photo, Other }

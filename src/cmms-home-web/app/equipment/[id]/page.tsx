@@ -457,7 +457,7 @@ export default function EquipmentDetailPage() {
                 <span className="text-lg leading-none">📄</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{d.title ?? d.fileName}</p>
-                  {d.category && <p className="text-xs text-slate-400 dark:text-slate-500">{d.category}</p>}
+                  {d.category && <p className="text-xs text-slate-400 dark:text-slate-500">{d.category.name}</p>}
                 </div>
                 <DocumentPreviewButton doc={d} />
               </li>

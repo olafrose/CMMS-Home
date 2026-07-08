@@ -43,8 +43,8 @@ namespace CmmsHome.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int?>("Category")
-                        .HasColumnType("integer");
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ContentHash")
                         .IsRequired()
@@ -86,12 +86,35 @@ namespace CmmsHome.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CategoryId");
+
                     b.HasIndex("ContentHash");
 
                     b.HasIndex("RelativePath")
                         .IsUnique();
 
                     b.ToTable("Documents");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.DocumentCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Sensitive")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DocumentCategories");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.DocumentLink", b =>
@@ -382,6 +405,16 @@ namespace CmmsHome.Api.Migrations
                     b.HasIndex("ParentId");
 
                     b.ToTable("StorageLocations");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.Document", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.DocumentCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.DocumentLink", b =>

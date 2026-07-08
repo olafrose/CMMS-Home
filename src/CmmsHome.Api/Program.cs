@@ -45,5 +45,6 @@ app.MapPartEndpoints();
 app.MapPartUsageEndpoints();
 app.MapPartCategoryEndpoints();
 app.MapDocumentEndpoints();
+app.MapDocumentCategoryEndpoints();
 
 app.Run();

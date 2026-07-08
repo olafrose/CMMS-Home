@@ -1,6 +1,6 @@
 import type {
   Category, Equipment, MaintenanceEvent, MaintenanceRule, Part, PartCategory, PartUsage, StorageLocation,
-  StorageLocationContents, Document, ClassifyDocumentDto,
+  StorageLocationContents, Document, DocumentCategory, ClassifyDocumentDto,
   CreateEquipmentDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
 } from './types'
 
@@ -135,6 +135,15 @@ export const api = {
     scan: () =>
       request<{ discovered: number; updated: number; missing: number; total: number }>('/documents/scan', { method: 'POST' }),
     contentUrl: (id: string) => `/api/documents/${id}/content`,
+  },
+  documentCategories: {
+    list: () => request<DocumentCategory[]>('/document-categories'),
+    create: (name: string, sensitive = false, color?: string) =>
+      request<DocumentCategory>('/document-categories', { method: 'POST', body: JSON.stringify({ name, sensitive, color }) }),
+    update: (id: string, name: string, sensitive: boolean, color?: string) =>
+      request<DocumentCategory>(`/document-categories/${id}`, { method: 'PUT', body: JSON.stringify({ name, sensitive, color }) }),
+    delete: (id: string) =>
+      request<void>(`/document-categories/${id}`, { method: 'DELETE' }),
   },
   partUsages: {
     list: (eventId: string) =>

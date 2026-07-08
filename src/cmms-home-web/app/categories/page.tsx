@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import ManagedNameList from '@/components/ManagedNameList'
+import DocumentCategoryManager from '@/components/DocumentCategoryManager'
 
 export default function CategoriesPage() {
   return (
@@ -25,6 +26,8 @@ export default function CategoriesPage() {
         api={api.partCategories}
         deleteConfirm={name => `Delete "${name}"? It will be removed from all parts assigned to it.`}
       />
+
+      <DocumentCategoryManager />
     </div>
   )
 }

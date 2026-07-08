@@ -16,6 +16,7 @@ public static class DocumentEndpoints
         {
             var q = db.Documents
                 .Include(d => d.Links)
+                .Include(d => d.Category)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(status))
@@ -39,6 +40,7 @@ public static class DocumentEndpoints
         {
             var doc = await db.Documents
                 .Include(d => d.Links)
+                .Include(d => d.Category)
                 .FirstOrDefaultAsync(d => d.Id == id);
             return doc is not null ? Results.Ok(doc) : Results.NotFound();
         });
@@ -76,12 +78,17 @@ public static class DocumentEndpoints
         {
             var doc = await db.Documents
                 .Include(d => d.Links)
+                .Include(d => d.Category)
                 .FirstOrDefaultAsync(d => d.Id == id);
             if (doc is null) return Results.NotFound();
 
             if (dto.Links is null || dto.Links.Count == 0)
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                     { ["links"] = ["At least one link is required."] });
+
+            if (dto.CategoryId is Guid cid && !await db.DocumentCategories.AnyAsync(c => c.Id == cid))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                    { ["categoryId"] = ["Category not found."] });
 
             var errors = new Dictionary<string, string[]>();
 
@@ -127,11 +134,12 @@ public static class DocumentEndpoints
                 LinkedAt = DateTime.UtcNow,
             }));
 
-            doc.Category = dto.Category;
+            doc.CategoryId = dto.CategoryId;
             doc.Title = dto.Title;
             doc.Status = DocumentStatus.Classified;
 
             await db.SaveChangesAsync();
+            await db.Entry(doc).Reference(d => d.Category).LoadAsync();
             return Results.Ok(doc);
         });
 
@@ -139,6 +147,7 @@ public static class DocumentEndpoints
         {
             var doc = await db.Documents
                 .Include(d => d.Links)
+                .Include(d => d.Category)
                 .FirstOrDefaultAsync(d => d.Id == id);
             if (doc is null) return Results.NotFound();
 
@@ -174,5 +183,5 @@ public static class DocumentEndpoints
     }
 }
 
-record ClassifyDocumentDto(DocumentCategory Category, string? Title, List<ClassifyLinkDto> Links);
+record ClassifyDocumentDto(Guid? CategoryId, string? Title, List<ClassifyLinkDto> Links);
 record ClassifyLinkDto(Guid? EquipmentId, Guid? MaintenanceEventId);

@@ -154,7 +154,15 @@ export interface UpdateRuleDto {
 }
 
 export type DocumentStatus = 'Unclassified' | 'Classified' | 'Ignored' | 'Missing'
-export type DocumentCategory = 'Manual' | 'Warranty' | 'Receipt' | 'Invoice' | 'Photo' | 'Other'
+
+// First-class, user-managed document category. `sensitive` will gate visibility
+// for anonymous users once auth exists; `color` drives the badge.
+export interface DocumentCategory {
+  id: string
+  name: string
+  sensitive: boolean
+  color?: string
+}
 
 export interface DocumentLink {
   id: string
@@ -174,6 +182,7 @@ export interface Document {
   lastModifiedUtc: string
   discoveredAt: string
   status: DocumentStatus
+  categoryId: string | null
   category: DocumentCategory | null
   title: string | null
   createdAt: string
@@ -181,7 +190,7 @@ export interface Document {
 }
 
 export interface ClassifyDocumentDto {
-  category: DocumentCategory
+  categoryId?: string
   title?: string
   links: { equipmentId?: string; maintenanceEventId?: string }[]
 }
