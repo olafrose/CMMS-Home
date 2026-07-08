@@ -171,7 +171,7 @@ public static class DocumentEndpoints
         // Upload a file into the app-owned inbox zone, then let the scanner index
         // it as a normal Unclassified document (reusing hash/dedupe). Requires a
         // writable RootPath (Phase 2). Same-origin proxy + no auth → antiforgery off.
-        group.MapPost("/upload", async (IFormFile file, IOptions<DocumentScanOptions> opts, IDocumentScanner scanner, CmmsDbContext db) =>
+        group.MapPost("/upload", async (IFormFile file, IOptions<DocumentScanOptions> opts, IDocumentScanner scanner, CmmsDbContext db, ILoggerFactory loggerFactory) =>
         {
             if (file is null || file.Length == 0)
                 return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -221,8 +221,10 @@ public static class DocumentEndpoints
                 await using (var dest = File.Create(targetFull))
                     await file.CopyToAsync(dest);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                loggerFactory.CreateLogger("DocumentUpload").LogError(ex,
+                    "Failed to write uploaded file to {Target}. Is the documents folder writable by the container user?", targetFull);
                 return Results.Problem("Could not write the uploaded file. Is the documents folder writable?",
                     statusCode: StatusCodes.Status500InternalServerError);
             }

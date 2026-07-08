@@ -20,6 +20,13 @@ the source code or git.
    other subfolders is indexed in place and never moved or modified. To keep the
    old read-only "index only" behavior, set `MANAGED_FOLDERING=false` in `.env`
    (and you can leave the mount read-only in that case).
+
+   > **Write permission:** the API image is chiseled and runs as non-root UID 1654,
+   > which can't write the share. The compose runs the api container as
+   > `${PUID:-1026}:${PGID:-100}` — set `PUID`/`PGID` in `.env` to a DSM user (UID)
+   > and the `users` group (GID 100) that own/can-write the `documents` share. Find
+   > a UID over SSH with `id <username>`. If uploads return 500 "Could not write the
+   > uploaded file," this is almost always the cause.
 2. Package Center → install **Container Manager**.
 
 ---

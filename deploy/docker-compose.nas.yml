@@ -5,6 +5,7 @@
 #   DOCS_PATH             : NAS shared folder for documents (mounted read-WRITE; app
 #                           writes only in inbox/ and library/ — see .env.example)
 #   MANAGED_FOLDERING     : true = move classified files into library/<Category>/
+#   PUID / PGID           : UID:GID the api runs as — must be able to write DOCS_PATH
 #   WEB_PORT              : host port to browse the app on
 #
 # Only the web port is published. The API and DB stay on the internal network
@@ -24,6 +25,10 @@ services:
   api:
     image: ${API_IMAGE}
     restart: unless-stopped
+    # The chiseled .NET image runs as non-root UID 1654, which can't write the
+    # NAS share. Run as a DSM user/group that CAN write DOCS_PATH so uploads and
+    # managed-foldering moves succeed (default = first DSM user : "users" group).
+    user: "${PUID:-1026}:${PGID:-100}"
     environment:
       - ConnectionStrings__DefaultConnection=Host=db;Database=cmms;Username=cmms;Password=${DB_PASSWORD}
       - Documents__RootPath=/documents
