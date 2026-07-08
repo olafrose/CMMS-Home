@@ -10,12 +10,6 @@ import type { Equipment, PartCategory } from '@/lib/types'
 
 const UNIT_SUGGESTIONS = ['each', 'L', 'mL', 'kg', 'g', 'm', 'cm', 'pack']
 
-// Prefill the place when arriving from a storage page's "add here" action.
-function initialLocation(): string | null {
-  if (typeof window === 'undefined') return null
-  return new URLSearchParams(window.location.search).get('location')
-}
-
 export default function NewPartPage() {
   const router = useRouter()
   const [name, setName] = useState('')
@@ -24,9 +18,9 @@ export default function NewPartPage() {
   const [minQuantity, setMinQuantity] = useState('')
   const [equipmentId, setEquipmentId] = useState('')
   const [partCategoryId, setPartCategoryId] = useState<string | null>(null)
-  const [storageLocationId, setStorageLocationId] = useState<string | null>(initialLocation)
+  const [storageLocationId, setStorageLocationId] = useState<string | null>(null)
   // Where the user came from (a storage place, if launched from its "add here").
-  const [fromLocationId] = useState(initialLocation)
+  const [fromLocationId, setFromLocationId] = useState<string | null>(null)
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [partCategories, setPartCategories] = useState<PartCategory[]>([])
   const [saving, setSaving] = useState(false)
@@ -35,6 +29,13 @@ export default function NewPartPage() {
   useEffect(() => {
     Promise.all([api.equipment.list(), api.partCategories.list()])
       .then(([eq, cats]) => { setEquipment(eq); setPartCategories(cats) })
+  }, [])
+
+  // Read ?location= after mount (window.location is stale in a render-time
+  // initializer during client-side navigation; only correct on a refresh).
+  useEffect(() => {
+    const loc = new URLSearchParams(window.location.search).get('location')
+    if (loc) { setStorageLocationId(loc); setFromLocationId(loc) }
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {

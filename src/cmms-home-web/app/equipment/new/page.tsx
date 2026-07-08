@@ -14,27 +14,14 @@ const KIND_OPTIONS: { value: EquipmentKind; label: string }[] = [
   { value: 'Both', label: 'Both' },
 ]
 
-function initialKind(): EquipmentKind {
-  if (typeof window === 'undefined') return 'Asset'
-  const k = new URLSearchParams(window.location.search).get('kind')
-  if (k === 'tool') return 'Tool'
-  return 'Asset'
-}
-
-// Prefill the place when arriving from a storage page's "add here" action.
-function initialLocation(): string | null {
-  if (typeof window === 'undefined') return null
-  return new URLSearchParams(window.location.search).get('location')
-}
-
 export default function NewEquipmentPage() {
   const router = useRouter()
   const [name, setName] = useState('')
-  const [kind, setKind] = useState<EquipmentKind>(initialKind)
+  const [kind, setKind] = useState<EquipmentKind>('Asset')
   const [categoryId, setCategoryId] = useState<string | null>(null)
-  const [storageLocationId, setStorageLocationId] = useState<string | null>(initialLocation)
+  const [storageLocationId, setStorageLocationId] = useState<string | null>(null)
   // Where the user came from (a storage place, if launched from its "add here").
-  const [fromLocationId] = useState(initialLocation)
+  const [fromLocationId, setFromLocationId] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
   const [saving, setSaving] = useState(false)
@@ -42,6 +29,15 @@ export default function NewEquipmentPage() {
 
   useEffect(() => {
     api.categories.list().then(setCategories)
+  }, [])
+
+  // Read ?kind= / ?location= after mount (window.location is stale in a render-
+  // time initializer during client-side navigation; only correct on a refresh).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('kind') === 'tool') setKind('Tool')
+    const loc = q.get('location')
+    if (loc) { setStorageLocationId(loc); setFromLocationId(loc) }
   }, [])
 
   async function handleCreateCategory(name: string) {
