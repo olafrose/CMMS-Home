@@ -25,6 +25,8 @@ export default function NewPartPage() {
   const [equipmentId, setEquipmentId] = useState('')
   const [partCategoryId, setPartCategoryId] = useState<string | null>(null)
   const [storageLocationId, setStorageLocationId] = useState<string | null>(initialLocation)
+  // Where the user came from (a storage place, if launched from its "add here").
+  const [fromLocationId] = useState(initialLocation)
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [partCategories, setPartCategories] = useState<PartCategory[]>([])
   const [saving, setSaving] = useState(false)
@@ -61,7 +63,9 @@ export default function NewPartPage() {
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/parts" className="text-blue-500 text-sm">‹ Parts</Link>
+        <Link href={fromLocationId ? `/storage/${fromLocationId}` : '/parts'} className="text-blue-500 text-sm">
+          {fromLocationId ? '‹ Back' : '‹ Parts'}
+        </Link>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">New Part</h1>
       </div>
 

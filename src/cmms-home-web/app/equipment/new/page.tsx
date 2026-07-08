@@ -33,6 +33,8 @@ export default function NewEquipmentPage() {
   const [kind, setKind] = useState<EquipmentKind>(initialKind)
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [storageLocationId, setStorageLocationId] = useState<string | null>(initialLocation)
+  // Where the user came from (a storage place, if launched from its "add here").
+  const [fromLocationId] = useState(initialLocation)
   const [notes, setNotes] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
   const [saving, setSaving] = useState(false)
@@ -67,7 +69,7 @@ export default function NewEquipmentPage() {
     }
   }
 
-  const backHref = kind === 'Tool' ? '/tools' : '/assets'
+  const backHref = fromLocationId ? `/storage/${fromLocationId}` : (kind === 'Tool' ? '/tools' : '/assets')
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
