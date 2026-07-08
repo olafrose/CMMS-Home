@@ -122,7 +122,33 @@ Categories:  CRUD /categories
 Parts:       POST/GET /parts (?equipment_id=, ?location_id=, ?low_stock=)  |  GET/PUT/DELETE /parts/{id}
 PartUsages:  POST/GET /part-usages  |  DELETE /part-usages/{id}
 PartCategories: CRUD /part-categories
+Documents:   GET /documents (?status=, ?equipment_id=, ?event_id=)  |  GET /documents/{id}[/content]
+             |  POST /documents/upload (multipart)  |  PUT /documents/{id}/classify  |  POST /documents/{id}/ignore
+             |  POST /documents/scan  |  DELETE /documents/{id}  |  POST /documents/prune-missing
+DocumentCategories: CRUD /document-categories
 ```
+
+## Documents
+
+Indexes files from a watched folder (`Documents__RootPath`, a NAS/SMB share) and
+links them to equipment/events. Metadata only lives in Postgres; the files are the
+NAS's domain. `DocumentScanner` (background + on-demand `/scan`) discovers files by
+`RelativePath`, dedupes/re-links by SHA-256 `ContentHash`, and marks vanished files
+`Missing` (never auto-deleted). `GET /documents/{id}/content` streams bytes back
+(inline; path-traversal guarded). Frontend renders PDFs/Word/Excel client-side to
+bypass browser download settings (`PdfViewer`/`OfficeViewer`, `DocumentPreview`).
+
+`DocumentCategory` is a managed entity (`Name`, `Sensitive`, `Color`); `Sensitive`
+is stored but unenforced until auth exists.
+
+**Managed foldering (Phase 2, `Documents__ManagedFoldering`):** the app owns two
+write zones under the root — `inbox/` (uploads land here via `POST /documents/upload`)
+and `library/<Category>/` (classify moves files here via `DocumentFiler`). It writes
+only in `library/`, deletes only from an app zone, and never touches files the user
+organized elsewhere (those are classified in place). Moves are atomic renames
+(copy→verify→delete only if forced cross-volume), audited in `DocumentMove`, and
+`PendingMove` docs are retried each scan. `DocumentScanner` and `DocumentFiler` share
+one `DocumentIoLock` so moves never race the scan. Full design: `docs/document-management.md`.
 
 ## Key UX Constraints
 
@@ -175,4 +201,4 @@ not maintenance ownership. `ToolCategory` folded into `Category`; `ToolLoan` →
 
 ## Out of Scope (MVP)
 
-Auth, multi-user, Home Assistant integration, OBD2/vehicle diagnostics, operating hours tracking, AI features, document management.
+Auth, multi-user, Home Assistant integration, OBD2/vehicle diagnostics, operating hours tracking, AI features.

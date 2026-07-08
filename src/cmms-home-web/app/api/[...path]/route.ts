@@ -18,8 +18,13 @@ async function proxy(
   const range = request.headers.get('range')
   if (range) headers.set('range', range) // let PDF viewers stream byte ranges
   if (request.method !== 'GET' && request.method !== 'HEAD') {
-    init.body = await request.text()
-    headers.set('content-type', 'application/json')
+    // Stream the body through untouched and forward the original content-type,
+    // so multipart uploads (with their boundary) survive as well as JSON.
+    const contentType = request.headers.get('content-type')
+    if (contentType) headers.set('content-type', contentType)
+    init.body = request.body
+    // Required by fetch when the body is a stream (Node/undici).
+    ;(init as RequestInit & { duplex?: 'half' }).duplex = 'half'
   }
   init.headers = headers
 

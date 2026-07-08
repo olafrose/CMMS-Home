@@ -4,6 +4,7 @@ namespace CmmsHome.Api.Services;
 
 public class DocumentScanHostedService(
     IDocumentScanner scanner,
+    IDocumentFiler filer,
     IOptions<DocumentScanOptions> options,
     ILogger<DocumentScanHostedService> logger) : BackgroundService
 {
@@ -17,6 +18,8 @@ public class DocumentScanHostedService(
             try
             {
                 await scanner.ScanAsync(stoppingToken);
+                // Retry any managed-foldering moves that failed earlier (no-op if off).
+                await filer.RetryPendingAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

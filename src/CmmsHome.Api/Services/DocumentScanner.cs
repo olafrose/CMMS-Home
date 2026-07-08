@@ -10,23 +10,24 @@ namespace CmmsHome.Api.Services;
 public class DocumentScanner(
     IServiceScopeFactory scopeFactory,
     IOptions<DocumentScanOptions> options,
+    DocumentIoLock ioLock,
     ILogger<DocumentScanner> logger) : IDocumentScanner
 {
     private readonly FileExtensionContentTypeProvider _contentTypeProvider = new();
-    private readonly SemaphoreSlim _scanLock = new(1, 1);
 
     public async Task<ScanResult> ScanAsync(CancellationToken ct = default)
     {
-        // Serialize scans so the periodic poller and a manual /scan can't run concurrently
-        // (concurrent inserts of the same RelativePath would violate the unique index).
-        await _scanLock.WaitAsync(ct);
+        // Serialize scans against each other and against managed-foldering moves
+        // (concurrent inserts of the same RelativePath would violate the unique
+        // index; a move mid-scan could be seen as a spurious delete).
+        await ioLock.Semaphore.WaitAsync(ct);
         try
         {
             return await ScanCoreAsync(ct);
         }
         finally
         {
-            _scanLock.Release();
+            ioLock.Semaphore.Release();
         }
     }
 

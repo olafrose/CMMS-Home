@@ -146,6 +146,35 @@ namespace CmmsHome.Api.Migrations
                     b.ToTable("DocumentLinks");
                 });
 
+            modelBuilder.Entity("CmmsHome.Api.Models.DocumentMove", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FromPath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("MovedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("ToPath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("DocumentMoves");
+                });
+
             modelBuilder.Entity("CmmsHome.Api.Models.Equipment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -434,6 +463,17 @@ namespace CmmsHome.Api.Migrations
                         .WithMany()
                         .HasForeignKey("MaintenanceEventId")
                         .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.DocumentMove", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.Document", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Document");
                 });

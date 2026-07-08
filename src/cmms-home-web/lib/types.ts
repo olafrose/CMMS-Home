@@ -153,7 +153,7 @@ export interface UpdateRuleDto {
   reminderLeadUnit?: IntervalUnit
 }
 
-export type DocumentStatus = 'Unclassified' | 'Classified' | 'Ignored' | 'Missing'
+export type DocumentStatus = 'Unclassified' | 'Classified' | 'Ignored' | 'Missing' | 'PendingMove'
 
 // First-class, user-managed document category. `sensitive` will gate visibility
 // for anonymous users once auth exists; `color` drives the badge.

@@ -74,7 +74,7 @@ public static class DocumentEndpoints
             return Results.Stream(stream, doc.ContentType, enableRangeProcessing: true);
         });
 
-        group.MapPut("/{id:guid}/classify", async (Guid id, ClassifyDocumentDto dto, CmmsDbContext db) =>
+        group.MapPut("/{id:guid}/classify", async (Guid id, ClassifyDocumentDto dto, CmmsDbContext db, IDocumentFiler filer) =>
         {
             var doc = await db.Documents
                 .Include(d => d.Links)
@@ -139,6 +139,12 @@ public static class DocumentEndpoints
             doc.Status = DocumentStatus.Classified;
 
             await db.SaveChangesAsync();
+
+            // Managed foldering (Phase 2, no-op unless enabled): move the file into
+            // library/<Category>/. Runs in its own scope, so reload to surface the
+            // new RelativePath/Status in the response.
+            await filer.FileAsync(doc.Id);
+            await db.Entry(doc).ReloadAsync();
             await db.Entry(doc).Reference(d => d.Category).LoadAsync();
             return Results.Ok(doc);
         });
@@ -161,6 +167,76 @@ public static class DocumentEndpoints
             var result = await scanner.ScanAsync();
             return Results.Ok(result);
         });
+
+        // Upload a file into the app-owned inbox zone, then let the scanner index
+        // it as a normal Unclassified document (reusing hash/dedupe). Requires a
+        // writable RootPath (Phase 2). Same-origin proxy + no auth → antiforgery off.
+        group.MapPost("/upload", async (IFormFile file, IOptions<DocumentScanOptions> opts, IDocumentScanner scanner, CmmsDbContext db) =>
+        {
+            if (file is null || file.Length == 0)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                    { ["file"] = ["No file was uploaded."] });
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var allowed = opts.Value.AllowedExtensions.Select(e => e.ToLowerInvariant()).ToHashSet();
+            if (!allowed.Contains(ext))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                    { ["file"] = [$"File type '{ext}' is not allowed."] });
+
+            var rootPath = opts.Value.RootPath;
+            if (string.IsNullOrWhiteSpace(rootPath))
+                return Results.Problem("Document storage is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            var rootFull = Path.GetFullPath(rootPath);
+            var inbox = opts.Value.InboxSubpath.Replace('\\', '/').Trim('/');
+            var inboxFull = Path.GetFullPath(Path.Combine(rootFull, inbox));
+
+            // Sanitize to a bare filename, then place inside the inbox with a
+            // path-traversal guard (mirrors the /content endpoint's guard).
+            var safeName = Path.GetFileName(file.FileName);
+            if (string.IsNullOrWhiteSpace(safeName))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                    { ["file"] = ["Invalid file name."] });
+
+            var targetFull = Path.GetFullPath(Path.Combine(inboxFull, safeName));
+            if (!targetFull.StartsWith(inboxFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                    { ["file"] = ["Invalid file name."] });
+
+            try
+            {
+                Directory.CreateDirectory(inboxFull);
+
+                // Avoid clobbering an existing inbox file of the same name.
+                if (File.Exists(targetFull))
+                {
+                    var stem = Path.GetFileNameWithoutExtension(safeName);
+                    for (int i = 2; File.Exists(targetFull); i++)
+                    {
+                        safeName = $"{stem} ({i}){ext}";
+                        targetFull = Path.Combine(inboxFull, safeName);
+                    }
+                }
+
+                await using (var dest = File.Create(targetFull))
+                    await file.CopyToAsync(dest);
+            }
+            catch (Exception)
+            {
+                return Results.Problem("Could not write the uploaded file. Is the documents folder writable?",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            // Index it right away so the caller gets the created document back.
+            await scanner.ScanAsync();
+
+            var relativePath = $"{inbox}/{safeName}";
+            var doc = await db.Documents
+                .Include(d => d.Category)
+                .FirstOrDefaultAsync(d => d.RelativePath == relativePath);
+
+            return doc is not null ? Results.Ok(doc) : Results.Accepted();
+        }).DisableAntiforgery();
 
         // Forget a document record (links cascade). Does not touch the file on disk.
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>

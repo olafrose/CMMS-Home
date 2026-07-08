@@ -2,7 +2,9 @@
 # no source needed on the NAS). Values come from the .env file next to this file.
 #   API_IMAGE / WEB_IMAGE : full image refs (registry push) OR local tags (docker load)
 #   DB_PASSWORD           : Postgres password (set once, before first run)
-#   DOCS_PATH             : NAS shared folder to ingest documents from (read-only)
+#   DOCS_PATH             : NAS shared folder for documents (mounted read-WRITE; app
+#                           writes only in inbox/ and library/ — see .env.example)
+#   MANAGED_FOLDERING     : true = move classified files into library/<Category>/
 #   WEB_PORT              : host port to browse the app on
 #
 # Only the web port is published. The API and DB stay on the internal network
@@ -25,8 +27,11 @@ services:
     environment:
       - ConnectionStrings__DefaultConnection=Host=db;Database=cmms;Username=cmms;Password=${DB_PASSWORD}
       - Documents__RootPath=/documents
+      # Managed foldering: uploads → /documents/inbox, classify → /documents/library/<Category>/.
+      # The app writes ONLY inside inbox/ and library/. Requires the rw mount below.
+      - Documents__ManagedFoldering=${MANAGED_FOLDERING:-true}
     volumes:
-      - ${DOCS_PATH}:/documents:ro
+      - ${DOCS_PATH}:/documents:rw
     depends_on:
       - db
 

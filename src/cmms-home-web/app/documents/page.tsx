@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { DocumentPreviewButton } from '@/components/DocumentPreview'
 import EntityCombobox from '@/components/EntityCombobox'
@@ -20,7 +20,12 @@ const statusColor: Record<DocumentStatus, string> = {
   Classified: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
   Ignored: 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400',
   Missing: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+  PendingMove: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
 }
+
+// Mirrors the API's DocumentScanOptions.AllowedExtensions — used for the file
+// picker's accept filter (server re-validates).
+const ALLOWED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.txt', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.heic']
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -287,6 +292,10 @@ export default function DocumentsPage() {
   const [scanning, setScanning] = useState(false)
   const [pruning, setPruning] = useState(false)
   const [scanSummary, setScanSummary] = useState<{ discovered: number; updated: number; missing: number; total: number } | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   function loadDocs(status: string) {
     setLoading(true)
@@ -326,6 +335,30 @@ export default function DocumentsPage() {
     window.dispatchEvent(new Event('documents:changed'))
   }
 
+  async function handleUpload(files: FileList | File[]) {
+    const list = Array.from(files)
+    if (list.length === 0) return
+    setUploading(true)
+    setUploadError(null)
+    let failed = 0
+    for (const f of list) {
+      try { await api.documents.upload(f) }
+      catch { failed++ }
+    }
+    // Uploads land in the inbox as Unclassified; show them by switching to that filter.
+    setStatusFilter('Unclassified')
+    loadDocs('Unclassified')
+    window.dispatchEvent(new Event('documents:changed'))
+    if (failed > 0) setUploadError(`${failed} of ${list.length} file(s) failed to upload.`)
+    setUploading(false)
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(false)
+    if (e.dataTransfer.files?.length) handleUpload(e.dataTransfer.files)
+  }
+
   async function handlePruneMissing() {
     if (!confirm('Remove all documents whose files are no longer on disk? (Files are not touched.)')) return
     setPruning(true)
@@ -352,14 +385,37 @@ export default function DocumentsPage() {
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Documents</h1>
-        <button
-          onClick={handleRescan}
-          disabled={scanning}
-          className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow disabled:opacity-50"
-        >
-          {scanning ? 'Scanning…' : 'Rescan'}
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ALLOWED_EXTENSIONS.join(',')}
+            className="hidden"
+            onChange={e => { if (e.target.files) handleUpload(e.target.files); e.target.value = '' }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow disabled:opacity-50"
+          >
+            {uploading ? 'Uploading…' : '⬆ Upload'}
+          </button>
+          <button
+            onClick={handleRescan}
+            disabled={scanning}
+            className="text-sm font-semibold px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 disabled:opacity-50"
+          >
+            {scanning ? 'Scanning…' : 'Rescan'}
+          </button>
+        </div>
       </div>
+
+      {uploadError && (
+        <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {uploadError}
+        </div>
+      )}
 
       {scanSummary && (
         <div className="mb-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-sm text-green-700 dark:text-green-300">
@@ -396,32 +452,41 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {loading && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true) }}
+        onDragLeave={e => { e.preventDefault(); setDragging(false) }}
+        onDrop={onDrop}
+        className={dragging ? 'rounded-xl ring-2 ring-blue-400 ring-dashed bg-blue-50/50 dark:bg-blue-900/10' : ''}
+      >
+        {loading && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}
 
-      {!loading && docs.length === 0 && (
-        <div className="text-center py-16 text-slate-400">
-          <p className="text-4xl mb-3">📄</p>
-          <p className="font-medium">No documents</p>
-          <p className="text-sm mt-1">
-            {statusFilter === 'Unclassified' ? 'Drop files on the NAS share and tap Rescan.' : 'Nothing to show for this filter.'}
-          </p>
-        </div>
-      )}
+        {!loading && docs.length === 0 && (
+          <div className="text-center py-16 text-slate-400">
+            <p className="text-4xl mb-3">📄</p>
+            <p className="font-medium">No documents</p>
+            <p className="text-sm mt-1">
+              {statusFilter === 'Unclassified'
+                ? 'Tap Upload (or drop files here) — or drop them on the NAS share and tap Rescan.'
+                : 'Nothing to show for this filter.'}
+            </p>
+          </div>
+        )}
 
-      {!loading && docs.length > 0 && (
-        <ul className="space-y-3">
-          {docs.map(doc => (
-            <DocCard
-              key={doc.id}
-              doc={doc}
-              equipment={equipment}
-              categories={categories}
-              onRemove={handleRemove}
-              onUpdate={handleUpdate}
-            />
-          ))}
-        </ul>
-      )}
+        {!loading && docs.length > 0 && (
+          <ul className="space-y-3">
+            {docs.map(doc => (
+              <DocCard
+                key={doc.id}
+                doc={doc}
+                equipment={equipment}
+                categories={categories}
+                onRemove={handleRemove}
+                onUpdate={handleUpdate}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }

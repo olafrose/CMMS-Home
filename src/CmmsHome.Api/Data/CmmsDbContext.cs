@@ -17,6 +17,7 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
     public DbSet<DocumentCategory> DocumentCategories => Set<DocumentCategory>();
+    public DbSet<DocumentMove> DocumentMoves => Set<DocumentMove>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -164,6 +165,17 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .HasOne<MaintenanceEvent>()
             .WithMany()
             .HasForeignKey(l => l.MaintenanceEventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Managed-foldering move audit (Phase 2).
+        modelBuilder.Entity<DocumentMove>()
+            .Property(m => m.MovedAt)
+            .HasDefaultValueSql("now()");
+
+        modelBuilder.Entity<DocumentMove>()
+            .HasOne(m => m.Document)
+            .WithMany()
+            .HasForeignKey(m => m.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

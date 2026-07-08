@@ -19,4 +19,6 @@ public class Document
     public List<DocumentLink> Links { get; set; } = [];
 }
 
-public enum DocumentStatus { Unclassified, Classified, Ignored, Missing }
+// PendingMove MUST stay last: the value is persisted as an int, so appending
+// keeps existing rows' values stable (Unclassified=0 … Missing=3, PendingMove=4).
+public enum DocumentStatus { Unclassified, Classified, Ignored, Missing, PendingMove }

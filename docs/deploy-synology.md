@@ -13,6 +13,13 @@ the source code or git.
 
 1. DSM → **Control Panel → Shared Folder → Create** a folder for documents, e.g. a
    share named `documents` (path `/volume1/documents`). Drop your PDFs/Word/Excel here.
+   **Give the container write access** to this folder — the mount is read-**write**
+   so the app can file uploads and classified documents. The app writes **only**
+   inside two subfolders it owns: `inbox/` (uploads land here) and
+   `library/<Category>/` (classified files move here). Anything you organize in
+   other subfolders is indexed in place and never moved or modified. To keep the
+   old read-only "index only" behavior, set `MANAGED_FOLDERING=false` in `.env`
+   (and you can leave the mount read-only in that case).
 2. Package Center → install **Container Manager**.
 
 ---
@@ -64,8 +71,11 @@ Re-push/re-copy whenever you rebuild.
   same network works — no extra config.
 - The API auto-migrates the database on first start (creates all tables, including
   Documents). The `postgres_data` volume persists across restarts/updates.
-- Document ingest scans `/volume1/documents` (mounted read-only) on a timer and via the
-  **Rescan** button on `/documents`. It never modifies your files.
+- Document ingest scans `/volume1/documents` on a timer and via the **Rescan** button
+  on `/documents`. With `MANAGED_FOLDERING=true` (default) the mount is read-write and
+  the app files uploads/classified docs into `inbox/` and `library/<Category>/`; it
+  never touches files in other subfolders. You can also **Upload** files directly from
+  the `/documents` page.
 
 ## Notes / gotchas
 

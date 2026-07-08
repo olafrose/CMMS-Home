@@ -21,9 +21,13 @@ services:
     environment:
       - ConnectionStrings__DefaultConnection=Host=db;Database=cmms;Username=cmms;Password=cmms
       - Documents__RootPath=/documents
+      # Phase 2 managed foldering: uploads land in /documents/inbox, classifying
+      # moves files into /documents/library/<Category>/. Requires the rw mount below.
+      - Documents__ManagedFoldering=true
     volumes:
-      # Local inbox folder in the repo — drop files in ./docs-inbox to have them scanned.
-      - ./docs-inbox:/documents:ro
+      # Watched folder (read-WRITE for managed foldering). The app writes only in
+      # its own zones (inbox/, library/); drop files in ./docs-inbox to have them scanned.
+      - ./docs-inbox:/documents:rw
     depends_on:
       - db
 

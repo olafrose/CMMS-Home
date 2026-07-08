@@ -1,6 +1,26 @@
 # Document Management — Design
 
-**Status:** Design / planning. Not yet implemented. No code exists for this feature.
+**Status:** Implemented. Phase 1 (read-only index in place) and Phase 2 (managed
+foldering + in-app uploads) are both live. This document is the design of record;
+where the implementation diverged from the original plan, the notes below say so.
+
+## What shipped vs. this design
+
+- **Asset → Equipment merge:** everything below that says `Asset`/`AssetId` is now
+  `Equipment`/`EquipmentId`, and a document links m:n to equipment and/or events.
+- **Category is a managed entity, not an enum:** `DocumentCategory { Name,
+  Sensitive, Color }` (CRUD on `/document-categories`), replacing the fixed
+  `Manual|Warranty|…` enum. `Sensitive` is stored but not yet enforced (waits on
+  auth).
+- **Phase 2 foldering keys on category, not asset:** the managed tree is
+  `library/<Category>/<file>` (a document has exactly one category; it may link to
+  several equipment, which the folder tree can't represent). Files that live
+  outside the app's `inbox/`/`library/` zones are classified **in place** and never
+  moved. Uncategorized-but-classified files go to `library/Uncategorized/`.
+- **Uploads:** `POST /documents/upload` writes into `inbox/`, then a scan indexes
+  it as a normal `Unclassified` document. Classifying then moves it to `library/`.
+- **`ManagedFoldering` config flag** gates all writing/moving; off = pure Phase-1
+  behavior.
 
 CMMS@home document management lets the household keep manuals, warranties, receipts,
 invoices and scans alongside the assets and maintenance events they relate to. The

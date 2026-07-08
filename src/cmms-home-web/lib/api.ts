@@ -134,6 +134,15 @@ export const api = {
       request<{ removed: number }>('/documents/prune-missing', { method: 'POST' }),
     scan: () =>
       request<{ discovered: number; updated: number; missing: number; total: number }>('/documents/scan', { method: 'POST' }),
+    // Multipart upload — do NOT go through request() (which forces JSON); let the
+    // browser set the multipart boundary by omitting Content-Type.
+    upload: async (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`${API_BASE}/documents/upload`, { method: 'POST', body: form })
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`)
+      return res.json() as Promise<Document>
+    },
     contentUrl: (id: string) => `/api/documents/${id}/content`,
   },
   documentCategories: {
