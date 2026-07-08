@@ -37,6 +37,92 @@ namespace CmmsHome.Api.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("CmmsHome.Api.Models.Document", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Category")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTime>("DiscoveredAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LastModifiedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentHash");
+
+                    b.HasIndex("RelativePath")
+                        .IsUnique();
+
+                    b.ToTable("Documents");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.DocumentLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("EquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("LinkedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("MaintenanceEventId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("EquipmentId");
+
+                    b.HasIndex("MaintenanceEventId");
+
+                    b.ToTable("DocumentLinks");
+                });
+
             modelBuilder.Entity("CmmsHome.Api.Models.Equipment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -298,6 +384,27 @@ namespace CmmsHome.Api.Migrations
                     b.ToTable("StorageLocations");
                 });
 
+            modelBuilder.Entity("CmmsHome.Api.Models.DocumentLink", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.Document", "Document")
+                        .WithMany("Links")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CmmsHome.Api.Models.Equipment", null)
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("CmmsHome.Api.Models.MaintenanceEvent", null)
+                        .WithMany()
+                        .HasForeignKey("MaintenanceEventId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("CmmsHome.Api.Models.Equipment", b =>
                 {
                     b.HasOne("CmmsHome.Api.Models.Category", "Category")
@@ -406,6 +513,11 @@ namespace CmmsHome.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.Document", b =>
+                {
+                    b.Navigation("Links");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.Equipment", b =>

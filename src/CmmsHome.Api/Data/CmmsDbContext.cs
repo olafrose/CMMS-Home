@@ -14,6 +14,8 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<Part> Parts => Set<Part>();
     public DbSet<PartUsage> PartUsages => Set<PartUsage>();
     public DbSet<PartCategory> PartCategories => Set<PartCategory>();
+    public DbSet<Document> Documents => Set<Document>();
+    public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -121,6 +123,40 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .HasOne(u => u.Part)
             .WithMany()
             .HasForeignKey(u => u.PartId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Document>()
+            .Property(d => d.CreatedAt)
+            .HasDefaultValueSql("now()");
+
+        modelBuilder.Entity<Document>()
+            .Property(d => d.DiscoveredAt)
+            .HasDefaultValueSql("now()");
+
+        modelBuilder.Entity<Document>()
+            .HasIndex(d => d.RelativePath)
+            .IsUnique();
+
+        modelBuilder.Entity<Document>()
+            .HasIndex(d => d.ContentHash);
+
+        modelBuilder.Entity<Document>()
+            .HasMany(d => d.Links)
+            .WithOne(l => l.Document)
+            .HasForeignKey(l => l.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // A document link points at one Equipment or one MaintenanceEvent.
+        modelBuilder.Entity<DocumentLink>()
+            .HasOne<Equipment>()
+            .WithMany()
+            .HasForeignKey(l => l.EquipmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DocumentLink>()
+            .HasOne<MaintenanceEvent>()
+            .WithMany()
+            .HasForeignKey(l => l.MaintenanceEventId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
+import { api } from '@/lib/api'
 
 const tabs = [
   { href: '/', label: 'Home', icon: '🏠' },
@@ -16,6 +17,7 @@ const manageLinks = [
   { href: '/tools', label: 'Tools', icon: '🛠️' },
   { href: '/categories', label: 'Categories', icon: '🏷️' },
   { href: '/storage', label: 'Storage', icon: '🗄️' },
+  { href: '/documents', label: 'Documents', icon: '📄' },
 ]
 
 export default function BottomNav() {
@@ -23,9 +25,21 @@ export default function BottomNav() {
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [unclassifiedCount, setUnclassifiedCount] = useState(0)
 
   useEffect(() => setMounted(true), [])
   useEffect(() => setMenuOpen(false), [pathname])
+
+  // Refresh the unclassified badge on navigation and whenever the documents page
+  // signals a change (classify/ignore/rescan), so the count doesn't go stale.
+  useEffect(() => {
+    const refresh = () => api.documents.list({ status: 'Unclassified' })
+      .then(docs => setUnclassifiedCount(docs.length))
+      .catch(() => {})
+    refresh()
+    window.addEventListener('documents:changed', refresh)
+    return () => window.removeEventListener('documents:changed', refresh)
+  }, [pathname])
 
   const manageActive = manageLinks.some(l => pathname.startsWith(l.href))
 
@@ -62,7 +76,12 @@ export default function BottomNav() {
                   className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   <span>{l.icon}</span>
-                  {l.label}
+                  <span className="flex-1">{l.label}</span>
+                  {l.href === '/documents' && unclassifiedCount > 0 && (
+                    <span className="ml-1 bg-amber-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 leading-none">
+                      {unclassifiedCount}
+                    </span>
+                  )}
                 </Link>
               ))}
             </div>
@@ -70,13 +89,18 @@ export default function BottomNav() {
         )}
         <button
           onClick={() => setMenuOpen(v => !v)}
-          className={`flex flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium transition-colors ${
+          className={`relative flex flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium transition-colors ${
             menuOpen || manageActive ? 'text-blue-500' : 'text-slate-500 dark:text-slate-400'
           }`}
           aria-label="More"
         >
           <span className="text-xl leading-none">⋯</span>
           More
+          {unclassifiedCount > 0 && (
+            <span className="absolute top-1.5 right-1.5 bg-amber-500 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+              {unclassifiedCount > 9 ? '9+' : unclassifiedCount}
+            </span>
+          )}
         </button>
       </div>
 

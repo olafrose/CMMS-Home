@@ -6,10 +6,11 @@ import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
 import EntityCombobox from '@/components/EntityCombobox'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
+import { DocumentPreviewButton } from '@/components/DocumentPreview'
 import { locationPath } from '@/lib/storage'
 import { api } from '@/lib/api'
 import type {
-  Category, Equipment, EquipmentKind, IntervalUnit, MaintenanceEvent, MaintenanceRule,
+  Category, Document, Equipment, EquipmentKind, IntervalUnit, MaintenanceEvent, MaintenanceRule,
   MaintenanceStatus, Part, ScheduleType, StorageLocation,
 } from '@/lib/types'
 
@@ -161,6 +162,7 @@ export default function EquipmentDetailPage() {
   const [events, setEvents] = useState<MaintenanceEvent[]>([])
   const [rules, setRules] = useState<MaintenanceRule[]>([])
   const [parts, setParts] = useState<Part[]>([])
+  const [documents, setDocuments] = useState<Document[]>([])
   const [allEquipment, setAllEquipment] = useState<Equipment[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [locations, setLocations] = useState<StorageLocation[]>([])
@@ -202,6 +204,7 @@ export default function EquipmentDetailPage() {
       })
       .finally(() => setLoading(false))
     api.parts.list({ equipmentId: id }).then(setParts).catch(() => {})
+    api.documents.list({ equipmentId: id }).then(setDocuments).catch(() => {})
   }, [id])
 
   async function saveItem() {
@@ -440,6 +443,25 @@ export default function EquipmentDetailPage() {
                 </li>
               )
             })}
+          </ul>
+        </section>
+      )}
+
+      {/* Documents linked to this equipment */}
+      {documents.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Documents ({documents.length})</h2>
+          <ul className="space-y-2">
+            {documents.map((d) => (
+              <li key={d.id} className={`flex items-center gap-3 ${card} px-4 py-3`}>
+                <span className="text-lg leading-none">📄</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{d.title ?? d.fileName}</p>
+                  {d.category && <p className="text-xs text-slate-400 dark:text-slate-500">{d.category}</p>}
+                </div>
+                <DocumentPreviewButton doc={d} />
+              </li>
+            ))}
           </ul>
         </section>
       )}

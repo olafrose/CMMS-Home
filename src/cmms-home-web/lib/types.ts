@@ -152,3 +152,36 @@ export interface UpdateRuleDto {
   reminderLeadValue?: number
   reminderLeadUnit?: IntervalUnit
 }
+
+export type DocumentStatus = 'Unclassified' | 'Classified' | 'Ignored' | 'Missing'
+export type DocumentCategory = 'Manual' | 'Warranty' | 'Receipt' | 'Invoice' | 'Photo' | 'Other'
+
+export interface DocumentLink {
+  id: string
+  documentId: string
+  equipmentId: string | null
+  maintenanceEventId: string | null
+  linkedAt: string
+}
+
+export interface Document {
+  id: string
+  relativePath: string
+  fileName: string
+  contentType: string
+  sizeBytes: number
+  contentHash: string
+  lastModifiedUtc: string
+  discoveredAt: string
+  status: DocumentStatus
+  category: DocumentCategory | null
+  title: string | null
+  createdAt: string
+  links: DocumentLink[]
+}
+
+export interface ClassifyDocumentDto {
+  category: DocumentCategory
+  title?: string
+  links: { equipmentId?: string; maintenanceEventId?: string }[]
+}

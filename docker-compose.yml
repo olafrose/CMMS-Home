@@ -20,6 +20,10 @@ services:
       - "8080:8080"
     environment:
       - ConnectionStrings__DefaultConnection=Host=db;Database=cmms;Username=cmms;Password=cmms
+      - Documents__RootPath=/documents
+    volumes:
+      # Local inbox folder in the repo — drop files in ./docs-inbox to have them scanned.
+      - ./docs-inbox:/documents:ro
     depends_on:
       - db
 
@@ -41,3 +45,10 @@ services:
 
 volumes:
   postgres_data:
+
+# Documents are scanned from the ./docs-inbox bind mount above. To use a real
+# NAS/SMB share instead, replace the api `volumes:` entry with a cifs mount, e.g.:
+#   - type: volume
+#     source: documents
+#     target: /documents
+# plus a top-level `documents:` volume using driver_opts type=cifs, device=//NAS/cmms-docs.

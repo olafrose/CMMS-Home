@@ -1,12 +1,18 @@
 using System.Text.Json.Serialization;
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Endpoints;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<CmmsDbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Document ingest: read-only NAS/SMB watched-folder scanner (background).
+builder.Services.Configure<DocumentScanOptions>(builder.Configuration.GetSection("Documents"));
+builder.Services.AddSingleton<IDocumentScanner, DocumentScanner>();
+builder.Services.AddHostedService<DocumentScanHostedService>();
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -38,5 +44,6 @@ app.MapCategoryEndpoints();
 app.MapPartEndpoints();
 app.MapPartUsageEndpoints();
 app.MapPartCategoryEndpoints();
+app.MapDocumentEndpoints();
 
 app.Run();

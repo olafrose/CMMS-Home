@@ -1,0 +1,4 @@
+# Drop files here to have the document scanner ingest them.
+# The folder is tracked; its contents are git-ignored.
+*
+!.gitignore

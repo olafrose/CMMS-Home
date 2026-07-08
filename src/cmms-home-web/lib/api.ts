@@ -1,6 +1,6 @@
 import type {
   Category, Equipment, MaintenanceEvent, MaintenanceRule, Part, PartCategory, PartUsage, StorageLocation,
-  StorageLocationContents,
+  StorageLocationContents, Document, ClassifyDocumentDto,
   CreateEquipmentDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
 } from './types'
 
@@ -113,6 +113,28 @@ export const api = {
       request<PartCategory>(`/part-categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
     delete: (id: string) =>
       request<void>(`/part-categories/${id}`, { method: 'DELETE' }),
+  },
+  documents: {
+    list: (opts?: { status?: string; equipmentId?: string; eventId?: string }) => {
+      const params = new URLSearchParams()
+      if (opts?.status) params.set('status', opts.status)
+      if (opts?.equipmentId) params.set('equipment_id', opts.equipmentId)
+      if (opts?.eventId) params.set('event_id', opts.eventId)
+      const qs = params.size ? `?${params}` : ''
+      return request<Document[]>(`/documents${qs}`)
+    },
+    get: (id: string) => request<Document>(`/documents/${id}`),
+    classify: (id: string, dto: ClassifyDocumentDto) =>
+      request<Document>(`/documents/${id}/classify`, { method: 'PUT', body: JSON.stringify(dto) }),
+    ignore: (id: string) =>
+      request<Document>(`/documents/${id}/ignore`, { method: 'POST' }),
+    remove: (id: string) =>
+      request<void>(`/documents/${id}`, { method: 'DELETE' }),
+    pruneMissing: () =>
+      request<{ removed: number }>('/documents/prune-missing', { method: 'POST' }),
+    scan: () =>
+      request<{ discovered: number; updated: number; missing: number; total: number }>('/documents/scan', { method: 'POST' }),
+    contentUrl: (id: string) => `/api/documents/${id}/content`,
   },
   partUsages: {
     list: (eventId: string) =>
