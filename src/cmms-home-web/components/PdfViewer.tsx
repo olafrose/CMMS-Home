@@ -20,14 +20,22 @@ export default function PdfViewer({ url }: { url: string }) {
         if (cancelled || !container) return
         container.innerHTML = ''
         const avail = Math.max(320, container.clientWidth - 24)
+        // Render the bitmap at device-pixel resolution so it stays crisp on
+        // high-DPR phone screens; lay it out at the CSS size. Cap the backing
+        // store so multi-page docs don't blow up memory on low-power devices.
+        const dpr = Math.min(window.devicePixelRatio || 1, 3)
         for (let n = 1; n <= doc.numPages; n++) {
           const page = await doc.getPage(n)
           if (cancelled) return
           const base = page.getViewport({ scale: 1 })
-          const viewport = page.getViewport({ scale: Math.min(2, avail / base.width) })
+          const cssScale = Math.min(2, avail / base.width)
+          const renderScale = Math.min(cssScale * dpr, 3)
+          const viewport = page.getViewport({ scale: renderScale })
           const canvas = document.createElement('canvas')
           canvas.width = viewport.width
           canvas.height = viewport.height
+          canvas.style.width = `${viewport.width / dpr}px`
+          canvas.style.height = `${viewport.height / dpr}px`
           canvas.className = 'mx-auto mb-3 shadow max-w-full h-auto bg-white'
           container.appendChild(canvas)
           const ctx = canvas.getContext('2d')
