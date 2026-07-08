@@ -1,0 +1,44 @@
+# Run-only compose for the Synology NAS: pulls/uses prebuilt images (no build,
+# no source needed on the NAS). Values come from the .env file next to this file.
+#   API_IMAGE / WEB_IMAGE : full image refs (registry push) OR local tags (docker load)
+#   DB_PASSWORD           : Postgres password (set once, before first run)
+#   DOCS_PATH             : NAS shared folder to ingest documents from (read-only)
+#   WEB_PORT              : host port to browse the app on
+#
+# Only the web port is published. The API and DB stay on the internal network
+# (the web container proxies /api to the api container), so don't expose them.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cmms
+      POSTGRES_USER: cmms
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    image: ${API_IMAGE}
+    restart: unless-stopped
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=db;Database=cmms;Username=cmms;Password=${DB_PASSWORD}
+      - Documents__RootPath=/documents
+    volumes:
+      - ${DOCS_PATH}:/documents:ro
+    depends_on:
+      - db
+
+  web:
+    image: ${WEB_IMAGE}
+    restart: unless-stopped
+    environment:
+      - API_URL=http://api:8080
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
