@@ -21,12 +21,18 @@ function initialKind(): EquipmentKind {
   return 'Asset'
 }
 
+// Prefill the place when arriving from a storage page's "add here" action.
+function initialLocation(): string | null {
+  if (typeof window === 'undefined') return null
+  return new URLSearchParams(window.location.search).get('location')
+}
+
 export default function NewEquipmentPage() {
   const router = useRouter()
   const [name, setName] = useState('')
   const [kind, setKind] = useState<EquipmentKind>(initialKind)
   const [categoryId, setCategoryId] = useState<string | null>(null)
-  const [storageLocationId, setStorageLocationId] = useState<string | null>(null)
+  const [storageLocationId, setStorageLocationId] = useState<string | null>(initialLocation)
   const [notes, setNotes] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
   const [saving, setSaving] = useState(false)

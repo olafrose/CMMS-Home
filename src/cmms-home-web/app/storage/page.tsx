@@ -3,10 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import { childrenOf, locationPath, DEFAULT_LOCATION_ICON } from '@/lib/storage'
+import { childrenOf, locationPath, DEFAULT_LOCATION_ICON, LOCATION_ICON_CHOICES } from '@/lib/storage'
 import type { StorageLocation } from '@/lib/types'
-
-const ICON_CHOICES = ['🏠', '🏢', '🚪', '🗄️', '📦', '🧰', '🗃️', '🧺', '🪜', '🚗', '🧊', '🔧', '🧯', '📁']
 
 function descendantIds(id: string, all: StorageLocation[]): Set<string> {
   const out = new Set<string>([id])
@@ -75,7 +73,7 @@ function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
 
       {editing && (
         <div className="flex items-center gap-1 flex-wrap my-1" style={{ marginLeft: depth * 16 + 24 }}>
-          {ICON_CHOICES.map(c => (
+          {LOCATION_ICON_CHOICES.map(c => (
             <button key={c} onClick={() => setIcon(c)}
               className={`w-7 h-7 rounded-lg text-base leading-none ${icon === c ? 'bg-blue-100 dark:bg-blue-900/40 ring-1 ring-blue-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
               {c}

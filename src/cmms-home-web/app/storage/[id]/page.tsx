@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '@/lib/api'
 import { DEFAULT_LOCATION_ICON } from '@/lib/storage'
+import AddToLocation from '@/components/AddToLocation'
 import type { StorageLocationContents } from '@/lib/types'
 
 const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700'
@@ -30,10 +31,14 @@ export default function StorageContentsPage() {
   const [origin, setOrigin] = useState('')
   const [loading, setLoading] = useState(true)
 
+  function load() {
+    return api.storageLocations.contents(id).then(setData).catch(() => setData(null))
+  }
+
   useEffect(() => {
     setOrigin(window.location.origin)
-    api.storageLocations.contents(id).then(setData).catch(() => setData(null)).finally(() => setLoading(false))
-  }, [id])
+    load().finally(() => setLoading(false))
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
   if (!data) return <div className="p-6 text-red-500 text-sm">Place not found.</div>
@@ -65,6 +70,8 @@ export default function StorageContentsPage() {
           </div>
         )}
       </section>
+
+      <AddToLocation locationId={id} onChanged={load} />
 
       <section>
         <div className="flex items-center justify-between mb-2">
