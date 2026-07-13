@@ -128,6 +128,8 @@ export const api = {
       request<Document>(`/documents/${id}/classify`, { method: 'PUT', body: JSON.stringify(dto) }),
     ignore: (id: string) =>
       request<Document>(`/documents/${id}/ignore`, { method: 'POST' }),
+    unclassify: (id: string) =>
+      request<Document>(`/documents/${id}/unclassify`, { method: 'POST' }),
     remove: (id: string) =>
       request<void>(`/documents/${id}`, { method: 'DELETE' }),
     pruneMissing: () =>

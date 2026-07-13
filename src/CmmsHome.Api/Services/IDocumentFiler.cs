@@ -16,6 +16,10 @@ public interface IDocumentFiler
 {
     Task<FileOutcome> FileAsync(Guid documentId, CancellationToken ct = default);
 
+    // Reverse of FileAsync: move a file from library/ back to inbox/ (used when a
+    // document is un-classified). Only moves files that live in the library zone.
+    Task<FileOutcome> ReturnToInboxAsync(Guid documentId, CancellationToken ct = default);
+
     // Retry every document left in PendingMove (called after each scan cycle).
     Task<int> RetryPendingAsync(CancellationToken ct = default);
 }

@@ -32,6 +32,74 @@ public class DocumentFiler(
         }
     }
 
+    public async Task<FileOutcome> ReturnToInboxAsync(Guid documentId, CancellationToken ct = default)
+    {
+        var opts = options.Value;
+        if (!opts.ManagedFoldering || string.IsNullOrWhiteSpace(opts.RootPath))
+            return FileOutcome.Skipped;
+
+        await ioLock.Semaphore.WaitAsync(ct);
+        try
+        {
+            return await ReturnCoreAsync(documentId, opts, ct);
+        }
+        finally
+        {
+            ioLock.Semaphore.Release();
+        }
+    }
+
+    private async Task<FileOutcome> ReturnCoreAsync(Guid documentId, DocumentScanOptions opts, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CmmsDbContext>();
+
+        var doc = await db.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
+        if (doc is null) return FileOutcome.Skipped;
+
+        var rootFull = Path.GetFullPath(opts.RootPath!);
+        var inbox = NormalizeZone(opts.InboxSubpath);
+        var library = NormalizeZone(opts.LibrarySubpath);
+        var rel = doc.RelativePath.Replace('\\', '/');
+
+        if (IsUnderZone(rel, inbox)) return FileOutcome.AlreadyFiled; // already in the inbox
+        if (!IsUnderZone(rel, library)) return FileOutcome.Skipped;   // user-organized file: leave in place
+
+        var sourceFull = Path.GetFullPath(Path.Combine(rootFull, doc.RelativePath));
+        if (!IsInsideRoot(sourceFull, rootFull) || !File.Exists(sourceFull))
+            return FileOutcome.Skipped;
+
+        var inboxFull = Path.GetFullPath(Path.Combine(rootFull, inbox));
+        var fileName = doc.FileName;
+        var targetFull = Path.Combine(inboxFull, fileName);
+
+        try
+        {
+            Directory.CreateDirectory(inboxFull);
+
+            if (File.Exists(targetFull))
+            {
+                if (ComputeHash(targetFull) == doc.ContentHash)
+                {
+                    File.Delete(sourceFull);
+                    return await CommitAsync(db, doc, $"{inbox}/{fileName}", fileName, fromPath: null, doc.Status, ct);
+                }
+                fileName = NextFreeName(inboxFull, fileName);
+                targetFull = Path.Combine(inboxFull, fileName);
+            }
+
+            var fromPath = doc.RelativePath;
+            MoveFile(sourceFull, targetFull, doc.ContentHash);
+            // Preserve the caller's status (the endpoint set Unclassified before calling us).
+            return await CommitAsync(db, doc, $"{inbox}/{fileName}", fileName, fromPath, doc.Status, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "DocumentFiler: return-to-inbox failed for {DocumentId}.", documentId);
+            return FileOutcome.Pending;
+        }
+    }
+
     public async Task<int> RetryPendingAsync(CancellationToken ct = default)
     {
         if (!options.Value.ManagedFoldering) return 0;
@@ -101,7 +169,7 @@ public class DocumentFiler(
                 {
                     // Same content already filed — dedupe: drop the source, point the row at it.
                     File.Delete(sourceFull);
-                    return await CommitAsync(db, doc, $"{targetDirRel}/{fileName}", fileName, fromPath: null, ct);
+                    return await CommitAsync(db, doc, $"{targetDirRel}/{fileName}", fileName, fromPath: null, DocumentStatus.Classified, ct);
                 }
                 // Different file with the same name — pick a free name.
                 fileName = NextFreeName(targetDirFull, fileName);
@@ -110,7 +178,7 @@ public class DocumentFiler(
 
             var fromPath = doc.RelativePath;
             MoveFile(sourceFull, targetFull, doc.ContentHash);
-            return await CommitAsync(db, doc, $"{targetDirRel}/{fileName}", fileName, fromPath, ct);
+            return await CommitAsync(db, doc, $"{targetDirRel}/{fileName}", fileName, fromPath, DocumentStatus.Classified, ct);
         }
         catch (Exception ex)
         {
@@ -122,7 +190,7 @@ public class DocumentFiler(
     }
 
     private static async Task<FileOutcome> CommitAsync(
-        CmmsDbContext db, Document doc, string targetRel, string fileName, string? fromPath, CancellationToken ct)
+        CmmsDbContext db, Document doc, string targetRel, string fileName, string? fromPath, DocumentStatus status, CancellationToken ct)
     {
         var moved = fromPath is not null;
         if (moved)
@@ -138,7 +206,7 @@ public class DocumentFiler(
         }
         doc.RelativePath = targetRel;
         doc.FileName = fileName;
-        doc.Status = DocumentStatus.Classified;
+        doc.Status = status;
         await db.SaveChangesAsync(ct);
         return moved ? FileOutcome.Moved : FileOutcome.AlreadyFiled;
     }

@@ -162,6 +162,28 @@ public static class DocumentEndpoints
             return Results.Ok(doc);
         });
 
+        // Undo a classification: clear links + category, return to the inbox queue,
+        // and (managed foldering) move the file from library/ back to inbox/.
+        group.MapPost("/{id:guid}/unclassify", async (Guid id, CmmsDbContext db, IDocumentFiler filer) =>
+        {
+            var doc = await db.Documents
+                .Include(d => d.Links)
+                .Include(d => d.Category)
+                .FirstOrDefaultAsync(d => d.Id == id);
+            if (doc is null) return Results.NotFound();
+
+            db.DocumentLinks.RemoveRange(doc.Links);
+            doc.CategoryId = null;
+            doc.Status = DocumentStatus.Unclassified;
+            await db.SaveChangesAsync();
+
+            // Move the file back to inbox/ (no-op if foldering off or file isn't in library).
+            await filer.ReturnToInboxAsync(doc.Id);
+            await db.Entry(doc).ReloadAsync();
+            await db.Entry(doc).Reference(d => d.Category).LoadAsync();
+            return Results.Ok(doc);
+        });
+
         group.MapPost("/scan", async (IDocumentScanner scanner) =>
         {
             var result = await scanner.ScanAsync();

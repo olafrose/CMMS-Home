@@ -188,6 +188,7 @@ function DocCard({ doc, equipment, categories, onRemove, onUpdate }: DocCardProp
   const [classifying, setClassifying] = useState(false)
   const [ignoring, setIgnoring] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [unclassifying, setUnclassifying] = useState(false)
 
   async function handleDelete() {
     if (!confirm(`Remove "${doc.title ?? doc.fileName}" from the library? (The file on disk is not touched.)`)) return
@@ -207,6 +208,17 @@ function DocCard({ doc, equipment, categories, onRemove, onUpdate }: DocCardProp
       onRemove(doc.id)
     } catch {
       setIgnoring(false)
+    }
+  }
+
+  async function handleUnclassify() {
+    if (!confirm('Move this document back to the inbox and clear its classification?')) return
+    setUnclassifying(true)
+    try {
+      const updated = await api.documents.unclassify(doc.id)
+      onUpdate(updated)
+    } catch {
+      setUnclassifying(false)
     }
   }
 
@@ -240,6 +252,19 @@ function DocCard({ doc, equipment, categories, onRemove, onUpdate }: DocCardProp
       </div>
       <div className="flex items-center gap-2 pt-1">
         <DocumentPreviewButton doc={doc} />
+        {(doc.status === 'Classified' || doc.status === 'PendingMove') && (
+          <>
+            <span className="text-slate-300 dark:text-slate-600">·</span>
+            <button
+              type="button"
+              onClick={handleUnclassify}
+              disabled={unclassifying}
+              className="text-xs text-blue-500 font-medium disabled:opacity-50"
+            >
+              {unclassifying ? 'Moving…' : 'Move to inbox'}
+            </button>
+          </>
+        )}
         {doc.status === 'Unclassified' && (
           <>
             <span className="text-slate-300 dark:text-slate-600">·</span>
@@ -372,12 +397,12 @@ export default function DocumentsPage() {
   }
 
   function handleUpdate(updated: Document) {
-    // If the current filter is Unclassified, remove the now-classified doc from the list
-    if (statusFilter === 'Unclassified' && updated.status !== 'Unclassified') {
-      setDocs(prev => prev.filter(d => d.id !== updated.id))
-    } else {
-      setDocs(prev => prev.map(d => d.id === updated.id ? updated : d))
-    }
+    // Drop the doc from the list if it no longer matches the active filter
+    // (e.g. classify from Unclassified, or un-classify from Classified). '' = All.
+    const matchesFilter = !statusFilter || updated.status === statusFilter
+    setDocs(prev => matchesFilter
+      ? prev.map(d => d.id === updated.id ? updated : d)
+      : prev.filter(d => d.id !== updated.id))
     window.dispatchEvent(new Event('documents:changed'))
   }
 
