@@ -226,7 +226,7 @@ export default function DashboardPage() {
               {events.map((e) => (
                 <li key={e.id}>
                   <Link
-                    href={`/equipment/${e.equipmentId}`}
+                    href={`/events/${e.id}?equipment_id=${e.equipmentId}`}
                     className="flex items-center justify-between bg-white dark:bg-slate-800 rounded-xl px-4 py-3 shadow-sm border border-slate-100 dark:border-slate-700"
                   >
                     <div>
