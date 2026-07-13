@@ -163,12 +163,15 @@ one `DocumentIoLock` so moves never race the scan. Full design: `docs/document-m
 Parts inventory, per-event parts consumption, and the unified storage hierarchy:
 
 ```
-Part       { Id, Name*, Quantity, Unit*, MinQuantity?, EquipmentId?, PartCategoryId?, StorageLocationId? }
-PartUsage  { Id, MaintenanceEventId, PartId, QuantityUsed }   # parts consumed by an event
+Part          { Id, Name*, Quantity, Unit*, MinQuantity?, PartCategoryId?, StorageLocationId? }
+PartEquipment { PartId, EquipmentId }                          # m:n — assets a consumable is used on
+PartUsage     { Id, MaintenanceEventId, PartId, QuantityUsed } # parts consumed by an event
 ```
 
 - A `Part` is consumable (has `Quantity`/`Unit`); it stays a **separate table** from
-  `Equipment`. It references one `StorageLocationId` and optionally the `Equipment` it's for.
+  `Equipment`. It references one `StorageLocationId` and is used on **many** `Equipment`
+  (many-to-many via `PartEquipment`; `part.equipment` serializes as an array). The
+  `/parts` new/edit forms pick assets with `EquipmentMultiSelect`.
 - Logging a maintenance event flows into an optional "parts used" step
   (`/events/{id}/parts`) which decrements stock.
 - Dashboard surfaces low-stock parts (`Quantity ≤ MinQuantity`).

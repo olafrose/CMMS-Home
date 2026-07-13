@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import EntityCombobox from '@/components/EntityCombobox'
+import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
 import type { Equipment, PartCategory } from '@/lib/types'
 
@@ -16,7 +17,7 @@ export default function NewPartPage() {
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
-  const [equipmentId, setEquipmentId] = useState('')
+  const [equipmentIds, setEquipmentIds] = useState<string[]>([])
   const [partCategoryId, setPartCategoryId] = useState<string | null>(null)
   const [storageLocationId, setStorageLocationId] = useState<string | null>(null)
   // Where the user came from (a storage place, if launched from its "add here").
@@ -50,7 +51,7 @@ export default function NewPartPage() {
         quantity: Number(quantity),
         unit: unit.trim(),
         minQuantity: minQuantity ? Number(minQuantity) : undefined,
-        equipmentId: equipmentId || undefined,
+        equipmentIds: equipmentIds.length ? equipmentIds : undefined,
         partCategoryId: partCategoryId || undefined,
         storageLocationId: storageLocationId || undefined,
       })
@@ -105,11 +106,8 @@ export default function NewPartPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">For equipment (optional)</label>
-          <select value={equipmentId} onChange={e => setEquipmentId(e.target.value)} className="field">
-            <option value="">— none —</option>
-            {equipment.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Used on equipment (optional)</label>
+          <EquipmentMultiSelect equipment={equipment} value={equipmentIds} onChange={setEquipmentIds} />
         </div>
 
         <div>

@@ -36,8 +36,7 @@ export interface Part {
   quantity: number
   unit: string
   minQuantity?: number
-  equipmentId?: string
-  equipment?: Equipment
+  equipment?: Equipment[]   // assets this consumable is used on (many-to-many)
   partCategoryId?: string
   partCategory?: PartCategory
   storageLocationId?: string

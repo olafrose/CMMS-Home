@@ -96,11 +96,11 @@ export const api = {
     get: (id: string) => request<Part>(`/parts/${id}`),
     create: (dto: {
       name: string; quantity: number; unit: string; minQuantity?: number
-      equipmentId?: string; partCategoryId?: string; storageLocationId?: string
+      equipmentIds?: string[]; partCategoryId?: string; storageLocationId?: string
     }) => request<Part>('/parts', { method: 'POST', body: JSON.stringify(dto) }),
     update: (id: string, dto: {
       name: string; quantity: number; unit: string; minQuantity?: number
-      equipmentId?: string; partCategoryId?: string; storageLocationId?: string
+      equipmentIds?: string[]; partCategoryId?: string; storageLocationId?: string
     }) => request<Part>(`/parts/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
     delete: (id: string) =>
       request<void>(`/parts/${id}`, { method: 'DELETE' }),

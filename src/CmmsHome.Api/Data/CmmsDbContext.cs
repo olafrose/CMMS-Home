@@ -12,6 +12,7 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Part> Parts => Set<Part>();
+    public DbSet<PartEquipment> PartEquipment => Set<PartEquipment>();
     public DbSet<PartUsage> PartUsages => Set<PartUsage>();
     public DbSet<PartCategory> PartCategories => Set<PartCategory>();
     public DbSet<Document> Documents => Set<Document>();
@@ -103,11 +104,11 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .HasForeignKey(p => p.StorageLocationId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // A consumable can be used on several assets (many-to-many via PartEquipment).
         modelBuilder.Entity<Part>()
-            .HasOne(p => p.Equipment)
+            .HasMany(p => p.Equipment)
             .WithMany()
-            .HasForeignKey(p => p.EquipmentId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .UsingEntity<PartEquipment>();
 
         modelBuilder.Entity<Part>()
             .HasOne(p => p.PartCategory)

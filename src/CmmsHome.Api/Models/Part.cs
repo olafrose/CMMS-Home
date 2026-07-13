@@ -8,9 +8,8 @@ public class Part
     public required string Unit { get; set; }
     public decimal? MinQuantity { get; set; }
 
-    // Optional: the equipment this part is for
-    public Guid? EquipmentId { get; set; }
-    public Equipment? Equipment { get; set; }
+    // The equipment this part is used on (many-to-many via PartEquipment).
+    public List<Equipment> Equipment { get; set; } = [];
 
     // Optional: part category (separate from asset categories)
     public Guid? PartCategoryId { get; set; }

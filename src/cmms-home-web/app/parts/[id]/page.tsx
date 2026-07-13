@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import EntityCombobox from '@/components/EntityCombobox'
+import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
 import { locationPath } from '@/lib/storage'
 import type { Equipment, Part, PartCategory, PartUsage, StorageLocation } from '@/lib/types'
@@ -25,7 +26,7 @@ export default function PartDetailPage() {
   const [name, setName] = useState('')
   const [unit, setUnit] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
-  const [equipmentId, setEquipmentId] = useState('')
+  const [equipmentIds, setEquipmentIds] = useState<string[]>([])
   const [partCategoryId, setPartCategoryId] = useState<string | null>(null)
   const [storageLocationId, setStorageLocationId] = useState<string | null>(null)
   const [equipment, setEquipment] = useState<Equipment[]>([])
@@ -40,7 +41,7 @@ export default function PartDetailPage() {
         setPart(p); setUsages(u); setEquipment(eq); setPartCategories(cats); setLocations(locs)
         setName(p.name); setUnit(p.unit)
         setMinQuantity(p.minQuantity != null ? String(p.minQuantity) : '')
-        setEquipmentId(p.equipmentId ?? '')
+        setEquipmentIds(p.equipment?.map(e => e.id) ?? [])
         setPartCategoryId(p.partCategoryId ?? null)
         setStorageLocationId(p.storageLocationId ?? null)
       })
@@ -54,7 +55,7 @@ export default function PartDetailPage() {
       const updated = await api.parts.update(id, {
         name: name.trim(), quantity: part.quantity, unit: unit.trim(),
         minQuantity: minQuantity ? Number(minQuantity) : undefined,
-        equipmentId: equipmentId || undefined,
+        equipmentIds: equipmentIds.length ? equipmentIds : undefined,
         partCategoryId: partCategoryId || undefined,
         storageLocationId: storageLocationId || undefined,
       })
@@ -69,7 +70,8 @@ export default function PartDetailPage() {
       const updated = await api.parts.update(id, {
         name: part.name, quantity: part.quantity + delta, unit: part.unit,
         minQuantity: part.minQuantity ?? undefined,
-        equipmentId: part.equipmentId, partCategoryId: part.partCategoryId,
+        equipmentIds: part.equipment?.map(e => e.id),
+        partCategoryId: part.partCategoryId,
         storageLocationId: part.storageLocationId,
       })
       setPart(updated)
@@ -149,11 +151,8 @@ export default function PartDetailPage() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">For equipment</label>
-            <select value={equipmentId} onChange={e => setEquipmentId(e.target.value)} className="field">
-              <option value="">— none —</option>
-              {equipment.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Used on equipment</label>
+            <EquipmentMultiSelect equipment={equipment} value={equipmentIds} onChange={setEquipmentIds} />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Category</label>
@@ -191,10 +190,14 @@ export default function PartDetailPage() {
                 : 'No location'}
             </p>
           </div>
-          {part.equipment && (
+          {part.equipment && part.equipment.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">For equipment</p>
-              <Link href={`/equipment/${part.equipmentId}`} className="text-sm text-blue-600 dark:text-blue-400">{part.equipment.name}</Link>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Used on equipment</p>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {part.equipment.map(e => (
+                  <Link key={e.id} href={`/equipment/${e.id}`} className="text-sm text-blue-600 dark:text-blue-400">{e.name}</Link>
+                ))}
+              </div>
             </div>
           )}
           {part.partCategory && (

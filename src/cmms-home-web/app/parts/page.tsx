@@ -15,14 +15,18 @@ function PartRow({ part }: { part: Part }) {
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{part.name}</p>
         <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{part.storageLocation?.name ?? 'No location'}</p>
-        {(part.partCategory || part.equipment) && (
+        {(part.partCategory || (part.equipment && part.equipment.length > 0)) && (
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {part.partCategory && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
                 {part.partCategory.name}
               </span>
             )}
-            {part.equipment && <span className="text-xs text-slate-400 dark:text-slate-500 truncate">for {part.equipment.name}</span>}
+            {part.equipment && part.equipment.length > 0 && (
+              <span className="text-xs text-slate-400 dark:text-slate-500 truncate">
+                for {part.equipment[0].name}{part.equipment.length > 1 ? ` +${part.equipment.length - 1}` : ''}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -93,7 +97,7 @@ export default function PartsPage() {
 
   const assetOptions = useMemo(() => {
     const seen = new Map<string, string>()
-    for (const p of parts) if (p.equipmentId && p.equipment) seen.set(p.equipmentId, p.equipment.name)
+    for (const p of parts) for (const e of p.equipment ?? []) seen.set(e.id, e.name)
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [parts])
 
@@ -104,7 +108,7 @@ export default function PartsPage() {
   }, [parts])
 
   const filtered = parts.filter(p =>
-    (!activeAsset || p.equipmentId === activeAsset) &&
+    (!activeAsset || (p.equipment ?? []).some(e => e.id === activeAsset)) &&
     (!activeCategory || p.partCategoryId === activeCategory)
   )
 

@@ -78,7 +78,7 @@ export default function AddToLocation({ locationId, onChanged }: {
         quantity: p.quantity,
         unit: p.unit,
         minQuantity: p.minQuantity ?? undefined,
-        equipmentId: p.equipmentId ?? undefined,
+        equipmentIds: p.equipment?.map(e => e.id),
         partCategoryId: p.partCategoryId ?? undefined,
         storageLocationId: locationId,
       })

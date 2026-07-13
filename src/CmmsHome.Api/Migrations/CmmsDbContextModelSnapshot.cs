@@ -340,9 +340,6 @@ namespace CmmsHome.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("EquipmentId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal?>("MinQuantity")
                         .HasColumnType("numeric");
 
@@ -365,8 +362,6 @@ namespace CmmsHome.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("EquipmentId");
-
                     b.HasIndex("PartCategoryId");
 
                     b.HasIndex("StorageLocationId");
@@ -387,6 +382,21 @@ namespace CmmsHome.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("PartCategories");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.PartEquipment", b =>
+                {
+                    b.Property<Guid>("EquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("EquipmentId", "PartId");
+
+                    b.HasIndex("PartId");
+
+                    b.ToTable("PartEquipment");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.PartUsage", b =>
@@ -537,11 +547,6 @@ namespace CmmsHome.Api.Migrations
 
             modelBuilder.Entity("CmmsHome.Api.Models.Part", b =>
                 {
-                    b.HasOne("CmmsHome.Api.Models.Equipment", "Equipment")
-                        .WithMany()
-                        .HasForeignKey("EquipmentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("CmmsHome.Api.Models.PartCategory", "PartCategory")
                         .WithMany()
                         .HasForeignKey("PartCategoryId")
@@ -552,11 +557,28 @@ namespace CmmsHome.Api.Migrations
                         .HasForeignKey("StorageLocationId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.Navigation("Equipment");
-
                     b.Navigation("PartCategory");
 
                     b.Navigation("StorageLocation");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.PartEquipment", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.Equipment", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CmmsHome.Api.Models.Part", "Part")
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Equipment");
+
+                    b.Navigation("Part");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.PartUsage", b =>
