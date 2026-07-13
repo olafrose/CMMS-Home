@@ -21,6 +21,8 @@ interface LabelItem {
   lines: string[] // location detail, location first
   caption: string
   qrUrl: string
+  /** Optional maintenance quick-log target (equipment only), for the secondary QR. */
+  maintenanceUrl?: string
 }
 
 const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700'
@@ -32,8 +34,11 @@ interface LabelDesign {
   qrPosition: QrPosition
   qrSizeMm: number // 0 = auto (capped at QR_MAX_MM)
   align: LabelAlign
+  maintenanceQr: boolean // add a 2nd "quick-log" QR to equipment labels (large labels only)
 }
-const DEFAULT_DESIGN: LabelDesign = { qrPosition: 'auto', qrSizeMm: 0, align: 'auto' }
+const DEFAULT_DESIGN: LabelDesign = { qrPosition: 'auto', qrSizeMm: 0, align: 'auto', maintenanceQr: false }
+// A label needs at least this on its short edge to fit two stacked QRs legibly.
+const MAINT_QR_MIN_MM = 40
 
 function pill(active: boolean) {
   return `px-2.5 py-1 rounded-full text-sm font-medium ${
@@ -119,8 +124,9 @@ export default function LabelsPage() {
   const equipmentItems = useMemo<LabelItem[]>(() => equipment.map(e => ({
     key: `equipment:${e.id}`, kind: 'equipment', icon: e.kind === 'Tool' ? '🛠️' : '🔧', name: e.name,
     lines: [e.category?.name, e.storageLocation?.name].filter(Boolean) as string[],
-    caption: 'Scan to log maintenance',
-    qrUrl: `${qrBase}/equipment/${e.id}/log`,
+    caption: 'Scan to open',
+    qrUrl: `${qrBase}/equipment/${e.id}`,
+    maintenanceUrl: `${qrBase}/equipment/${e.id}/log`,
   })), [equipment, qrBase])
 
   // Every storage location is a printable label; the subtitle is its ancestor breadcrumb.
@@ -212,12 +218,20 @@ export default function LabelsPage() {
   const qrColumn = qrPosition === 'top' || qrPosition === 'bottom'
   const qrCapMm = design.qrSizeMm > 0 ? design.qrSizeMm : QR_MAX_MM
   const showCaption = qrPosition !== 'none' && Math.min(layout.labelWidthMm, layout.labelHeightMm) >= 34
-  const qrEdgeMm = qrPosition === 'none'
+  // Second (maintenance) QR only on large enough labels, and only for equipment.
+  const twoQr = design.maintenanceQr && qrPosition !== 'none'
+    && Math.min(layout.labelWidthMm, layout.labelHeightMm) >= MAINT_QR_MIN_MM
+  let qrEdgeMm = qrPosition === 'none'
     ? 0
     : Math.max(8, Math.min(
         qrCapMm,
         (qrColumn ? layout.labelWidthMm : layout.labelHeightMm) - 4 - (!qrColumn && showCaption ? 5 : 0),
       ))
+  // Two QRs stack vertically in the QR area — shrink each so both + captions fit the height.
+  if (twoQr) {
+    const captionAllow = showCaption ? 6 : 0
+    qrEdgeMm = Math.max(10, Math.min(qrEdgeMm, (layout.labelHeightMm - 4 - 2 * captionAllow - 2) / 2))
+  }
 
   // One shared font size for the whole run: measure every label's content against
   // its cell and take the tightest fit, so all labels render at the same crisp size.
@@ -374,6 +388,24 @@ export default function LabelsPage() {
                   </button>
                 ))}
               </div>
+
+              {design.qrPosition !== 'none' && (
+                <label className="flex items-start gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    checked={design.maintenanceQr}
+                    onChange={e => setDesign(d => ({ ...d, maintenanceQr: e.target.checked }))}
+                    className="w-4 h-4 accent-blue-600 mt-0.5"
+                  />
+                  <span className="text-xs text-slate-600 dark:text-slate-300">
+                    Add a maintenance quick-log QR to equipment labels
+                    <span className="block text-slate-400 dark:text-slate-500">
+                      Second QR (→ log) on labels at least {MAINT_QR_MIN_MM}mm on the short edge.
+                      {design.maintenanceQr && !twoQr && ' Current label is too small — not shown.'}
+                    </span>
+                  </span>
+                </label>
+              )}
             </div>
           </section>
         )}
@@ -454,6 +486,8 @@ export default function LabelsPage() {
                       align={design.align}
                       showCaption={showCaption}
                       fontScale={fontScale}
+                      secondaryQrUrl={twoQr && it.kind === 'equipment' ? it.maintenanceUrl : undefined}
+                      secondaryCaption="Scan to log"
                     />
                   ))}
                 </div>

@@ -33,6 +33,9 @@ export interface PrintLabelProps {
   showCaption?: boolean
   /** Uniform font multiplier applied across all labels (computed by the page). */
   fontScale?: number
+  /** Optional second QR (e.g. maintenance quick-log) stacked with the primary. */
+  secondaryQrUrl?: string
+  secondaryCaption?: string
 }
 
 // Base sizes in mm — set the visual hierarchy; the page multiplies name/line sizes
@@ -44,6 +47,7 @@ const ICON_FALLBACK_MM = 6
 export default function PrintLabel({
   icon, name, lines = [], caption, qrUrl,
   qrPosition = 'left', qrEdgeMm = 0, align = 'auto', showCaption = false, fontScale = 1,
+  secondaryQrUrl, secondaryCaption,
 }: PrintLabelProps) {
   const pos = qrPosition === 'auto' ? 'left' : qrPosition
   const showQr = pos !== 'none' && qrEdgeMm > 0
@@ -60,12 +64,12 @@ export default function PrintLabel({
   // large fontScale would balloon the icon and starve the location row of width.
   const iconMm = showQr ? Math.min(Math.max(qrEdgeMm * 0.4, 4), 10) : ICON_FALLBACK_MM
 
-  // Column 1: QR + caption.
-  const qr = showQr && (
-    <div className="shrink-0 flex flex-col items-center" style={{ gap: `${0.8 * s}mm`, maxWidth: '100%', maxHeight: '100%' }}>
+  // A single QR + optional caption block.
+  const qrBlock = (value: string, cap?: string) => (
+    <div className="flex flex-col items-center" style={{ gap: `${0.8 * s}mm`, maxWidth: '100%' }}>
       <div style={{ width: `${qrEdgeMm}mm`, height: `${qrEdgeMm}mm`, maxWidth: '100%' }}>
         <QRCodeSVG
-          value={qrUrl}
+          value={value}
           size={512}
           level="M"
           marginSize={2}
@@ -74,11 +78,19 @@ export default function PrintLabel({
           style={{ display: 'block', width: '100%', height: '100%' }}
         />
       </div>
-      {showCaption && caption && (
+      {showCaption && cap && (
         <p style={{ fontSize: `${capMm}mm`, lineHeight: 1.15, color: '#6b7280', textAlign: 'center', maxWidth: `${qrEdgeMm}mm` }}>
-          {caption}
+          {cap}
         </p>
       )}
+    </div>
+  )
+
+  // Column 1: primary QR (+ caption), plus an optional secondary QR stacked below.
+  const qr = showQr && (
+    <div className="shrink-0 flex flex-col items-center" style={{ gap: `${1.4 * s}mm`, maxWidth: '100%', maxHeight: '100%' }}>
+      {qrBlock(qrUrl, caption)}
+      {secondaryQrUrl && qrBlock(secondaryQrUrl, secondaryCaption)}
     </div>
   )
 

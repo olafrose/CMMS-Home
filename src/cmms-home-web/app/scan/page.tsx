@@ -36,21 +36,22 @@ export default function ScanPage() {
   }, [isSecure]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDecoded(decoded: string) {
-    // Equipment QRs (/equipment/{id} optionally /log) → open the equipment quick-log.
+    // Honor what the QR encodes: an asset QR (/equipment/{id}) opens the asset page,
+    // a maintenance QR (/equipment/{id}/log) opens the quick-log. Legacy /assets/…
+    // and typed /storage/{box|shelf}/… QRs still resolve.
+    const isLog = /\/log(?:[/?#]|$)/i.test(decoded)
     const equipment = decoded.match(/\/equipment\/([0-9a-f-]{36})/i)
-    // Accept new place QRs (/storage/{id}) and legacy typed ones (/storage/{box|shelf}/{id}).
+    const asset = decoded.match(/\/assets\/([0-9a-f-]{36})/i)
     const storageTyped = decoded.match(/\/storage\/(?:box|shelf)\/([0-9a-f-]{36})/i)
     const storagePlain = decoded.match(/\/storage\/([0-9a-f-]{36})(?:[/?#]|$)/i)
-    const asset = decoded.match(/\/assets\/([0-9a-f-]{36})/i)
+    const equipmentId = equipment?.[1] ?? asset?.[1]
     const storageId = storageTyped?.[1] ?? storagePlain?.[1]
-    if (equipment) {
-      router.push(`/equipment/${equipment[1]}/log`)
+    if (equipmentId) {
+      router.push(isLog ? `/equipment/${equipmentId}/log` : `/equipment/${equipmentId}`)
     } else if (storageId) {
       router.push(`/storage/${storageId}`)
-    } else if (asset) {
-      router.push(`/assets/${asset[1]}/log`)
     } else if (/^[0-9a-f-]{36}$/i.test(decoded)) {
-      router.push(`/assets/${decoded}/log`)
+      router.push(`/equipment/${decoded}`)
     } else {
       setError(`Unrecognised QR code`)
     }
