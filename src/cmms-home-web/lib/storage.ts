@@ -5,7 +5,7 @@ export const DEFAULT_LOCATION_ICON = '🧊'
 
 // Emoji palette offered when assigning an icon to a place. Single source of
 // truth — used by the storage tree and the per-place "new sub-location" form.
-export const LOCATION_ICON_CHOICES = ['🏠', '🏢', '🚪', '🗄️', '📦', '🧰', '🗃️', '🧺', '🪜', '🚗', '🧊', '🔧', '🧯', '📁']
+export const LOCATION_ICON_CHOICES = ['🏠', '🏢', '🚪', '🗄️', '🪑', '📦', '🧰', '🗃️', '🧺', '🪜', '🚗', '🧊', '🔧', '🧯', '📁']
 
 // Full breadcrumb path for a place id, e.g. "Garage › Cabinet › Bin 3".
 export function locationPath(id: string | undefined, all: StorageLocation[], sep = ' › '): string {
