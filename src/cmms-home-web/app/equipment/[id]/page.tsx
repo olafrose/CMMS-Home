@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
 import EntityCombobox from '@/components/EntityCombobox'
+import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
 import { DocumentPreviewButton } from '@/components/DocumentPreview'
 import { locationPath } from '@/lib/storage'
@@ -175,7 +176,7 @@ export default function EquipmentDetailPage() {
   const [kind, setKind] = useState<EquipmentKind>('Asset')
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [storageLocationId, setStorageLocationId] = useState<string | null>(null)
-  const [usedOnId, setUsedOnId] = useState('')
+  const [usedOnIds, setUsedOnIds] = useState<string[]>([])
   const [notes, setNotes] = useState('')
   const [savingItem, setSavingItem] = useState(false)
 
@@ -192,7 +193,7 @@ export default function EquipmentDetailPage() {
 
   function seed(e: Equipment) {
     setName(e.name); setKind(e.kind); setCategoryId(e.categoryId ?? null)
-    setStorageLocationId(e.storageLocationId ?? null); setUsedOnId(e.usedOnEquipmentId ?? ''); setNotes(e.notes ?? '')
+    setStorageLocationId(e.storageLocationId ?? null); setUsedOnIds(e.usedOn?.map(u => u.id) ?? []); setNotes(e.notes ?? '')
   }
 
   useEffect(() => {
@@ -214,7 +215,7 @@ export default function EquipmentDetailPage() {
         name: name.trim(), kind,
         categoryId: categoryId || undefined,
         storageLocationId: storageLocationId || undefined,
-        usedOnEquipmentId: usedOnId || undefined,
+        usedOnEquipmentIds: usedOnIds.length ? usedOnIds : undefined,
         notes: notes.trim() || undefined,
         imageUrl: item?.imageUrl,
       })
@@ -259,7 +260,7 @@ export default function EquipmentDetailPage() {
   const loan = item.loans?.find(l => !l.returnedAt)
   const backHref = item.kind === 'Tool' ? '/tools' : '/assets'
   const relatedParts = parts
-  const relatedEquipment = allEquipment.filter(e => e.usedOnEquipmentId === id)
+  const relatedEquipment = allEquipment.filter(e => e.usedOn?.some(u => u.id === id))
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-6">
@@ -300,10 +301,7 @@ export default function EquipmentDetailPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Used on (optional)</label>
-            <select value={usedOnId} onChange={e => setUsedOnId(e.target.value)} className="field">
-              <option value="">— none —</option>
-              {allEquipment.filter(e => e.id !== id).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            <EquipmentMultiSelect equipment={allEquipment.filter(e => e.id !== id)} value={usedOnIds} onChange={setUsedOnIds} />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Notes (optional)</label>
@@ -321,7 +319,17 @@ export default function EquipmentDetailPage() {
           </p>
           {item.category && <p className="text-sm text-slate-500 dark:text-slate-400"><span className="font-medium text-slate-700 dark:text-slate-300">Category:</span> {item.category.name}</p>}
           {item.storageLocationId && <p className="text-sm text-slate-500 dark:text-slate-400"><span className="font-medium text-slate-700 dark:text-slate-300">Stored at:</span> {locationPath(item.storageLocationId, locations)}</p>}
-          {item.usedOnEquipment && <p className="text-sm text-slate-500 dark:text-slate-400"><span className="font-medium text-slate-700 dark:text-slate-300">Used on:</span> <Link href={`/equipment/${item.usedOnEquipmentId}`} className="text-blue-600 dark:text-blue-400">{item.usedOnEquipment.name}</Link></p>}
+          {item.usedOn && item.usedOn.length > 0 && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              <span className="font-medium text-slate-700 dark:text-slate-300">Used on:</span>{' '}
+              {item.usedOn.map((u, i) => (
+                <span key={u.id}>
+                  {i > 0 && ', '}
+                  <Link href={`/equipment/${u.id}`} className="text-blue-600 dark:text-blue-400">{u.name}</Link>
+                </span>
+              ))}
+            </p>
+          )}
           {item.notes && <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap pt-1">{item.notes}</p>}
           <p className="text-sm text-slate-400 dark:text-slate-500 pt-1">Added {formatDate(item.createdAt)}</p>
         </div>

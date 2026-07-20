@@ -96,7 +96,8 @@ Next.js 16 App Router. All pages are `'use client'` with client-side data fetchi
 
 ```
 Equipment           { Id UUID, Name*, Kind(Asset|Tool|Both), CategoryId?→Category, StorageLocationId?→StorageLocation,
-                      ImageUrl?, Notes?, UsedOnEquipmentId?→Equipment, CreatedAt }
+                      ImageUrl?, Notes?, CreatedAt }
+EquipmentUsedOn     { EquipmentId, UsedOnEquipmentId }        # m:n self-link — assets a tool is used on
 EquipmentLoan       { Id, EquipmentId, Borrower*, LoanedAt (default now()), ReturnedAt? }
 MaintenanceEvent    { Id, EquipmentId, Type(maintenance|repair|cleaning|replacement), Note?, PhotoUrl?, CreatedAt }
 MaintenanceRule     { Id, EquipmentId, Name?, IntervalValue, IntervalUnit(Days|Weeks|Months|Years), LastDoneAt? }
@@ -197,9 +198,10 @@ API caps depth at 4). Every `Equipment` and `Part` references a single
 once tools can be maintained, the only difference from an asset is "can be lent" — and
 assets can be lent too, so they're one concept viewed through two lenses. `Kind`
 (Asset|Tool|Both) drives which filtered list a row shows in; the `/equipment/{id}` detail
-page always offers maintenance schedule + history **and** lending. `UsedOnEquipmentId` is
-an optional self-link ("used on / services", former `Tool.AssetId`) — purely associative,
-not maintenance ownership. `ToolCategory` folded into `Category`; `ToolLoan` → `EquipmentLoan`.
+page always offers maintenance schedule + history **and** lending. `UsedOn` is a
+self-referencing **many-to-many** ("used on / services", former `Tool.AssetId`; join
+table `EquipmentUsedOn`) — a tool can be used on several assets; purely associative,
+not maintenance ownership. Picked with `EquipmentMultiSelect`. `ToolCategory` folded into `Category`; `ToolLoan` → `EquipmentLoan`.
 `Category` was promoted from a free-text field to a first-class entity (`/categories`).
 
 ## Out of Scope (MVP)

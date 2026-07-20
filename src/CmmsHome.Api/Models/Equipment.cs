@@ -20,9 +20,9 @@ public class Equipment
     public string? ImageUrl { get; set; }
     public string? Notes { get; set; }
 
-    // Optional "used on / services" link to another piece of equipment.
-    public Guid? UsedOnEquipmentId { get; set; }
-    public Equipment? UsedOnEquipment { get; set; }
+    // "Used on / services" links to other equipment (many-to-many via EquipmentUsedOn):
+    // e.g. one tool used on several assets. Associative only — not maintenance ownership.
+    public List<Equipment> UsedOn { get; set; } = [];
 
     public DateTime CreatedAt { get; set; }
 

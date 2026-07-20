@@ -15,7 +15,7 @@ public static class EquipmentEndpoints
             var q = db.Equipment
                 .Include(e => e.Category)
                 .Include(e => e.StorageLocation)
-                .Include(e => e.UsedOnEquipment)
+                .Include(e => e.UsedOn)
                 .Include(e => e.Loans.Where(l => l.ReturnedAt == null))
                 .AsQueryable();
 
@@ -41,16 +41,17 @@ public static class EquipmentEndpoints
             if (string.IsNullOrWhiteSpace(dto.Name))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["Name is required"] });
 
+            var newId = Guid.NewGuid();
             var e = new Equipment
             {
-                Id = Guid.NewGuid(),
+                Id = newId,
                 Name = dto.Name.Trim(),
                 Kind = dto.Kind,
                 CategoryId = dto.CategoryId,
                 StorageLocationId = dto.StorageLocationId,
                 ImageUrl = dto.ImageUrl,
                 Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes!.Trim(),
-                UsedOnEquipmentId = dto.UsedOnEquipmentId,
+                UsedOn = await ResolveUsedOn(db, dto.UsedOnEquipmentIds, newId),
                 CreatedAt = DateTime.UtcNow,
             };
             db.Equipment.Add(e);
@@ -60,7 +61,7 @@ public static class EquipmentEndpoints
 
         group.MapPut("/{id:guid}", async (Guid id, SaveEquipmentDto dto, CmmsDbContext db) =>
         {
-            var e = await db.Equipment.FindAsync(id);
+            var e = await db.Equipment.Include(x => x.UsedOn).FirstOrDefaultAsync(x => x.Id == id);
             if (e is null) return Results.NotFound();
 
             e.Name = dto.Name?.Trim() ?? e.Name;
@@ -69,7 +70,11 @@ public static class EquipmentEndpoints
             e.StorageLocationId = dto.StorageLocationId;
             e.ImageUrl = dto.ImageUrl;
             e.Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes!.Trim();
-            e.UsedOnEquipmentId = dto.UsedOnEquipmentId == id ? null : dto.UsedOnEquipmentId; // no self-cycle
+
+            // Reconcile the "used on" links to the requested set (self excluded).
+            e.UsedOn.Clear();
+            e.UsedOn.AddRange(await ResolveUsedOn(db, dto.UsedOnEquipmentIds, id));
+
             await db.SaveChangesAsync();
             return Results.Ok(await LoadOne(db, id));
         });
@@ -116,12 +121,20 @@ public static class EquipmentEndpoints
         db.Equipment
             .Include(e => e.Category)
             .Include(e => e.StorageLocation)
-            .Include(e => e.UsedOnEquipment)
+            .Include(e => e.UsedOn)
             .Include(e => e.Loans.Where(l => l.ReturnedAt == null))
             .FirstOrDefaultAsync(e => e.Id == id);
+
+    // Load the equipment "used on" targets for the given ids (deduped, self excluded).
+    private static async Task<List<Equipment>> ResolveUsedOn(CmmsDbContext db, List<Guid>? ids, Guid selfId)
+    {
+        if (ids is null || ids.Count == 0) return [];
+        var distinct = ids.Where(i => i != selfId).Distinct().ToList();
+        return distinct.Count == 0 ? [] : await db.Equipment.Where(e => distinct.Contains(e.Id)).ToListAsync();
+    }
 }
 
 record SaveEquipmentDto(string Name, EquipmentKind Kind, Guid? CategoryId, Guid? StorageLocationId,
-    string? ImageUrl, string? Notes, Guid? UsedOnEquipmentId);
+    string? ImageUrl, string? Notes, List<Guid>? UsedOnEquipmentIds);
 
 record CheckoutDto(string Borrower);

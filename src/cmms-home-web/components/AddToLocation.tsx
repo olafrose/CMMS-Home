@@ -63,7 +63,7 @@ export default function AddToLocation({ locationId, onChanged }: {
         storageLocationId: locationId,
         imageUrl: e.imageUrl ?? undefined,
         notes: e.notes ?? undefined,
-        usedOnEquipmentId: e.usedOnEquipmentId ?? undefined,
+        usedOnEquipmentIds: e.usedOn?.map(u => u.id),
       })
       setCandidates(c => c && { ...c, equipment: c.equipment.map(x => x.id === e.id ? { ...x, storageLocationId: locationId } : x) })
       onChanged()

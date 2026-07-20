@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Category, EquipmentKind } from '@/lib/types'
+import type { Category, Equipment, EquipmentKind } from '@/lib/types'
 import EntityCombobox from '@/components/EntityCombobox'
+import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
 
 const KIND_OPTIONS: { value: EquipmentKind; label: string }[] = [
@@ -24,11 +25,14 @@ export default function NewEquipmentPage() {
   const [fromLocationId, setFromLocationId] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
+  const [equipment, setEquipment] = useState<Equipment[]>([])
+  const [usedOnIds, setUsedOnIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     api.categories.list().then(setCategories)
+    api.equipment.list().then(setEquipment).catch(() => {})
   }, [])
 
   // Read ?kind= / ?location= after mount (window.location is stale in a render-
@@ -56,6 +60,7 @@ export default function NewEquipmentPage() {
         kind,
         categoryId: categoryId ?? undefined,
         storageLocationId: storageLocationId ?? undefined,
+        usedOnEquipmentIds: usedOnIds.length ? usedOnIds : undefined,
         notes: notes.trim() || undefined,
       })
       router.push(`/equipment/${created.id}`)
@@ -121,6 +126,11 @@ export default function NewEquipmentPage() {
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Stored at</label>
           <StorageLocationPicker value={storageLocationId} onChange={setStorageLocationId} placeholder="e.g. Basement, Garage" />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Used on (optional)</label>
+          <EquipmentMultiSelect equipment={equipment} value={usedOnIds} onChange={setUsedOnIds} />
         </div>
 
         <div>

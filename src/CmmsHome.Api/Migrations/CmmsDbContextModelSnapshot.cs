@@ -205,16 +205,11 @@ namespace CmmsHome.Api.Migrations
                     b.Property<Guid?>("StorageLocationId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("UsedOnEquipmentId")
-                        .HasColumnType("uuid");
-
                     b.HasKey("Id");
 
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("StorageLocationId");
-
-                    b.HasIndex("UsedOnEquipmentId");
 
                     b.ToTable("Equipment");
                 });
@@ -245,6 +240,21 @@ namespace CmmsHome.Api.Migrations
                     b.HasIndex("EquipmentId");
 
                     b.ToTable("EquipmentLoans");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.EquipmentUsedOn", b =>
+                {
+                    b.Property<Guid>("EquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UsedOnEquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("EquipmentId", "UsedOnEquipmentId");
+
+                    b.HasIndex("UsedOnEquipmentId");
+
+                    b.ToTable("EquipmentUsedOn");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.MaintenanceEvent", b =>
@@ -500,16 +510,9 @@ namespace CmmsHome.Api.Migrations
                         .HasForeignKey("StorageLocationId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("CmmsHome.Api.Models.Equipment", "UsedOnEquipment")
-                        .WithMany()
-                        .HasForeignKey("UsedOnEquipmentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.Navigation("Category");
 
                     b.Navigation("StorageLocation");
-
-                    b.Navigation("UsedOnEquipment");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.EquipmentLoan", b =>
@@ -521,6 +524,21 @@ namespace CmmsHome.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Equipment");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.EquipmentUsedOn", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.Equipment", null)
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CmmsHome.Api.Models.Equipment", null)
+                        .WithMany()
+                        .HasForeignKey("UsedOnEquipmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.MaintenanceEvent", b =>

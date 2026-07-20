@@ -19,14 +19,18 @@ function ToolRow({ tool }: { tool: Equipment }) {
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{tool.name}</p>
         <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{tool.storageLocation?.name ?? 'No location'}</p>
-        {(tool.category || tool.usedOnEquipment) && (
+        {(tool.category || (tool.usedOn && tool.usedOn.length > 0)) && (
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {tool.category && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
                 {tool.category.name}
               </span>
             )}
-            {tool.usedOnEquipment && <span className="text-xs text-slate-400 dark:text-slate-500 truncate">for {tool.usedOnEquipment.name}</span>}
+            {tool.usedOn && tool.usedOn.length > 0 && (
+              <span className="text-xs text-slate-400 dark:text-slate-500 truncate">
+                for {tool.usedOn[0].name}{tool.usedOn.length > 1 ? ` +${tool.usedOn.length - 1}` : ''}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -96,7 +100,7 @@ export default function ToolsPage() {
 
   const assetOptions = useMemo(() => {
     const seen = new Map<string, string>()
-    for (const t of tools) if (t.usedOnEquipmentId && t.usedOnEquipment) seen.set(t.usedOnEquipmentId, t.usedOnEquipment.name)
+    for (const t of tools) for (const e of t.usedOn ?? []) seen.set(e.id, e.name)
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [tools])
 
@@ -107,7 +111,7 @@ export default function ToolsPage() {
   }, [tools])
 
   const filtered = tools.filter(t =>
-    (!activeAsset || t.usedOnEquipmentId === activeAsset) &&
+    (!activeAsset || (t.usedOn ?? []).some(e => e.id === activeAsset)) &&
     (!activeCategory || t.categoryId === activeCategory)
   )
 

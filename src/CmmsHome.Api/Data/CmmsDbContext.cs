@@ -13,6 +13,7 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Part> Parts => Set<Part>();
     public DbSet<PartEquipment> PartEquipment => Set<PartEquipment>();
+    public DbSet<EquipmentUsedOn> EquipmentUsedOn => Set<EquipmentUsedOn>();
     public DbSet<PartUsage> PartUsages => Set<PartUsage>();
     public DbSet<PartCategory> PartCategories => Set<PartCategory>();
     public DbSet<Document> Documents => Set<Document>();
@@ -60,12 +61,14 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .HasForeignKey(e => e.StorageLocationId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // Optional "used on / services" self-link.
+        // "Used on / services" — self-referencing many-to-many (a tool used on
+        // several assets). Both FKs point at Equipment, so configure explicitly.
         modelBuilder.Entity<Equipment>()
-            .HasOne(e => e.UsedOnEquipment)
+            .HasMany(e => e.UsedOn)
             .WithMany()
-            .HasForeignKey(e => e.UsedOnEquipmentId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .UsingEntity<EquipmentUsedOn>(
+                r => r.HasOne<Equipment>().WithMany().HasForeignKey(x => x.UsedOnEquipmentId).OnDelete(DeleteBehavior.Cascade),
+                l => l.HasOne<Equipment>().WithMany().HasForeignKey(x => x.EquipmentId).OnDelete(DeleteBehavior.Cascade));
 
         modelBuilder.Entity<EquipmentLoan>()
             .Property(l => l.LoanedAt)

@@ -70,8 +70,7 @@ export interface Equipment {
   storageLocation?: StorageLocation
   imageUrl?: string
   notes?: string
-  usedOnEquipmentId?: string
-  usedOnEquipment?: Equipment
+  usedOn?: Equipment[]   // other equipment this (tool) is used on (many-to-many)
   createdAt: string
   loans?: EquipmentLoan[]
 }
@@ -108,7 +107,7 @@ export interface CreateEquipmentDto {
   storageLocationId?: string
   imageUrl?: string
   notes?: string
-  usedOnEquipmentId?: string
+  usedOnEquipmentIds?: string[]
 }
 
 export interface CreateEventDto {
