@@ -124,7 +124,7 @@ export default function LabelsPage() {
   const equipmentItems = useMemo<LabelItem[]>(() => equipment.map(e => ({
     key: `equipment:${e.id}`, kind: 'equipment', icon: e.kind === 'Tool' ? '🛠️' : '🔧', name: e.name,
     lines: [e.category?.name, e.storageLocation?.name].filter(Boolean) as string[],
-    caption: 'Scan to open',
+    caption: 'Open',
     qrUrl: `${qrBase}/equipment/${e.id}`,
     maintenanceUrl: `${qrBase}/equipment/${e.id}/log`,
   })), [equipment, qrBase])
@@ -135,7 +135,7 @@ export default function LabelsPage() {
     return {
       key: `place:${p.id}`, kind: 'place', icon: p.icon || DEFAULT_LOCATION_ICON, name: p.name,
       lines: ancestors ? [ancestors] : [],
-      caption: 'Scan to see contents',
+      caption: 'Contents',
       qrUrl: `${qrBase}/storage/${p.id}`,
     }
   }), [places, qrBase])
@@ -487,7 +487,7 @@ export default function LabelsPage() {
                       showCaption={showCaption}
                       fontScale={fontScale}
                       secondaryQrUrl={twoQr && it.kind === 'equipment' ? it.maintenanceUrl : undefined}
-                      secondaryCaption="Scan to log"
+                      secondaryCaption="Log"
                     />
                   ))}
                 </div>

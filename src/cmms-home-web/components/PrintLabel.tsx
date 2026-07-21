@@ -79,7 +79,12 @@ export default function PrintLabel({
         />
       </div>
       {showCaption && cap && (
-        <p style={{ fontSize: `${capMm}mm`, lineHeight: 1.15, color: '#6b7280', textAlign: 'center', maxWidth: `${qrEdgeMm}mm` }}>
+        <p style={{
+          fontSize: `${capMm}mm`, lineHeight: 1.15, color: '#6b7280', textAlign: 'center',
+          // One line only: a wrapped caption steals vertical space and, with two
+          // stacked QRs, pushes the second caption off the label.
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: `${qrEdgeMm}mm`,
+        }}>
           {cap}
         </p>
       )}
