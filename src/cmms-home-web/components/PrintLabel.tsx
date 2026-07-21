@@ -64,9 +64,10 @@ export default function PrintLabel({
   // large fontScale would balloon the icon and starve the location row of width.
   const iconMm = showQr ? Math.min(Math.max(qrEdgeMm * 0.4, 4), 10) : ICON_FALLBACK_MM
 
-  // A single QR + optional caption block.
+  // A single QR + optional caption block. Tight gap so the caption sits close to
+  // the QR (the QR's own quiet-zone already adds whitespace below the pattern).
   const qrBlock = (value: string, cap?: string) => (
-    <div className="flex flex-col items-center" style={{ gap: `${0.8 * s}mm`, maxWidth: '100%' }}>
+    <div className="flex flex-col items-center" style={{ gap: `${0.3 * s}mm`, maxWidth: '100%' }}>
       <div style={{ width: `${qrEdgeMm}mm`, height: `${qrEdgeMm}mm`, maxWidth: '100%' }}>
         <QRCodeSVG
           value={value}
