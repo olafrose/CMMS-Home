@@ -109,7 +109,9 @@ export default function PrintLabel({
         <div className="flex items-start" style={{ gap: '1.5mm', marginTop: `${0.6 * s}mm`, minHeight: `${iconMm}mm` }}>
           <div className="min-w-0 flex-1">
             {locLines.map((l, i) => (
-              <p key={i} className="truncate" style={{ fontSize: `${lineMm}mm`, lineHeight: 1.15, color: i === 0 ? '#374151' : '#6b7280' }}>
+              // Wrap (don't truncate) — a place's full breadcrumb matters when
+              // reshelving boxes. The page's auto-fit shrinks the font to fit.
+              <p key={i} className="break-words" style={{ fontSize: `${lineMm}mm`, lineHeight: 1.15, color: i === 0 ? '#374151' : '#6b7280' }}>
                 {l}
               </p>
             ))}
