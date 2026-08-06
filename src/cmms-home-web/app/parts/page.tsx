@@ -3,10 +3,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Part } from '@/lib/types'
+import { formatLocationPath } from '@/lib/storage'
+import type { AppSettings, Part, StorageLocation } from '@/lib/types'
 
-function PartRow({ part }: { part: Part }) {
+function PartRow({ part, locations, settings }: {
+  part: Part
+  locations: StorageLocation[]
+  settings: AppSettings | undefined
+}) {
   const lowStock = part.minQuantity != null && part.quantity <= part.minQuantity
+  // Full breadcrumb (shortened per policy) rather than the leaf place name alone.
+  const path = formatLocationPath(part.storageLocationId, locations, settings)
   return (
     <Link
       href={`/parts/${part.id}`}
@@ -14,7 +21,7 @@ function PartRow({ part }: { part: Part }) {
     >
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{part.name}</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{part.storageLocation?.name ?? 'No location'}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{path || 'No location'}</p>
         {(part.partCategory || (part.equipment && part.equipment.length > 0)) && (
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {part.partCategory && (
@@ -86,13 +93,17 @@ function ActiveChip({ label, onClear }: { label: string; onClear: () => void }) 
 
 export default function PartsPage() {
   const [parts, setParts] = useState<Part[]>([])
+  const [locations, setLocations] = useState<StorageLocation[]>([])
+  const [settings, setSettings] = useState<AppSettings>()
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
   const [activeAsset, setActiveAsset] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
   useEffect(() => {
-    api.parts.list().then(setParts).finally(() => setLoading(false))
+    Promise.all([api.parts.list(), api.storageLocations.list(), api.appSettings.get()])
+      .then(([p, places, s]) => { setParts(p); setLocations(places); setSettings(s) })
+      .finally(() => setLoading(false))
   }, [])
 
   const assetOptions = useMemo(() => {
@@ -204,14 +215,14 @@ export default function PartsPage() {
         <section className="mb-4">
           <h2 className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">Low Stock</h2>
           <ul className="space-y-2">
-            {lowStock.map(p => <li key={p.id}><PartRow part={p} /></li>)}
+            {lowStock.map(p => <li key={p.id}><PartRow part={p} locations={locations} settings={settings} /></li>)}
           </ul>
         </section>
       )}
 
       {normal.length > 0 && (
         <ul className="space-y-2">
-          {normal.map(p => <li key={p.id}><PartRow part={p} /></li>)}
+          {normal.map(p => <li key={p.id}><PartRow part={p} locations={locations} settings={settings} /></li>)}
         </ul>
       )}
     </div>

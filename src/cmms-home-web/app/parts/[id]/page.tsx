@@ -8,6 +8,7 @@ import EntityCombobox from '@/components/EntityCombobox'
 import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
 import { locationPath } from '@/lib/storage'
+import ExternalLinkList from '@/components/ExternalLinkList'
 import type { Equipment, Part, PartCategory, PartUsage, StorageLocation } from '@/lib/types'
 
 const UNIT_SUGGESTIONS = ['each', 'L', 'mL', 'kg', 'g', 'm', 'cm', 'pack']
@@ -208,6 +209,9 @@ export default function PartDetailPage() {
           )}
         </div>
       )}
+
+      {/* External links (spec sheet, reorder page) */}
+      <ExternalLinkList partId={id} />
 
       {/* Usage history */}
       <section>

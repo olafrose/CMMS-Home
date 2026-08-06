@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Equipment } from '@/lib/types'
+import { formatLocationPath } from '@/lib/storage'
+import type { AppSettings, Equipment, StorageLocation } from '@/lib/types'
 
 function FilterGroup({ label, entries, active, onSelect }: {
   label: string
@@ -55,9 +56,14 @@ export default function AssetsPage() {
   const [activeLocation, setActiveLocation] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
+  // `places` is the full storage tree (for breadcrumbs); `locations` further down is the
+  // separate list of filter-chip options.
+  const [places, setPlaces] = useState<StorageLocation[]>([])
+  const [settings, setSettings] = useState<AppSettings>()
+
   useEffect(() => {
-    api.equipment.list({ kind: 'asset' })
-      .then(setAssets)
+    Promise.all([api.equipment.list({ kind: 'asset' }), api.storageLocations.list(), api.appSettings.get()])
+      .then(([a, p, s]) => { setAssets(a); setPlaces(p); setSettings(s) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -184,7 +190,8 @@ export default function AssetsPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{asset.name}</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
-                  {[asset.category?.name, asset.storageLocation?.name].filter(Boolean).join(' · ') || 'No details'}
+                  {[asset.category?.name, formatLocationPath(asset.storageLocationId, places, settings)]
+                    .filter(Boolean).join(' · ') || 'No details'}
                 </p>
               </div>
               <span className="text-slate-300 dark:text-slate-600 text-lg">›</span>

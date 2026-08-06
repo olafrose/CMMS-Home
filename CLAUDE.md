@@ -44,43 +44,52 @@ Single-project Minimal API. No service layer — endpoints call `CmmsDbContext` 
 ```
 ├── Program.cs               # DI setup, middleware, endpoint registration, auto-migrate on startup
 ├── Data/CmmsDbContext.cs    # EF Core context; fluent config for cascade deletes + DB defaults
+├── Data/CmmsDbContextExtensions.cs # GetAppSettingsAsync() — the settings read seam
 ├── Models/                  # Plain C# model classes — no EF Core references
 │   ├── Equipment.cs         # durable item; Kind = Asset|Tool|Both (former Asset + Tool)
 │   ├── EquipmentLoan.cs     # lending history (former ToolLoan)
 │   ├── StorageLocation.cs   # self-referencing storage hierarchy (former Location/Shelf/Box)
 │   ├── MaintenanceEvent.cs  # type: maintenance | repair | cleaning | replacement
-│   └── MaintenanceRule.cs   # computed Status property (Ok/Upcoming/Due/Overdue)
+│   ├── MaintenanceRule.cs   # computed Status property (Ok/Upcoming/Due/Overdue)
+│   ├── ExternalLink.cs      # web link (url + label) on one Equipment or Part
+│   └── AppSettings.cs       # single-row user config + AbsoluteStorageMaxDepth ceiling
 └── Endpoints/               # One static class per resource; extension methods on WebApplication
     ├── EquipmentEndpoints.cs      # CRUD + ?kind=/?location_id=/?on_loan=/?maintained= + checkout/return
     ├── StorageLocationEndpoints.cs # CRUD + move (cycle/depth guards) + /{id}/contents
     ├── EventEndpoints.cs    # POST + GET (filter by ?equipment_id=) + GET/:id
-    └── RuleEndpoints.cs     # POST + GET (filter by ?equipment_id=) + PUT/:id
+    ├── RuleEndpoints.cs     # POST + GET (filter by ?equipment_id=) + PUT/:id
+    ├── ExternalLinkEndpoints.cs # CRUD + ?equipment_id=/?part_id=; http(s)-only URL guard
+    └── AppSettingsEndpoints.cs  # GET/PUT singleton (no /{id})
 ```
 
 The `Dockerfile` is in `src/CmmsHome.Api/` and uses `.` (repo root) as the build context.
 
 ## Frontend Architecture (`src/cmms-home-web/`)
 
-Next.js 16 App Router. All pages are `'use client'` with client-side data fetching via `lib/api.ts`. This ensures `NEXT_PUBLIC_API_URL` works uniformly in both browser and Docker environments.
+Next.js 16 App Router. All pages are `'use client'` with client-side data fetching via `lib/api.ts`, which calls the relative path `/api`. A catch-all route handler (`app/api/[...path]/route.ts`) proxies that to the backend at `API_URL` (server-side env var, defaults to `http://localhost:8080`), so the same build works in the browser and in Docker without baking a host into the bundle.
 
 ```
 ├── lib/types.ts             # TypeScript types matching backend models exactly
 ├── lib/api.ts               # Typed fetch wrapper — all API calls go through here
 ├── lib/labelFormats.ts      # sheet/roll label format presets (Avery, Brother, Dymo)
-├── components/BottomNav.tsx # Fixed bottom tab bar (Home / Assets / Scan)
+├── components/BottomNav.tsx # Fixed bottom tab bar (Home / Assets / Parts / Scan / More)
 ├── components/PrintLabel.tsx # one printable QR label, fills its cell
 ├── components/StorageLocationPicker.tsx # typeahead + breadcrumb place picker
+├── components/ManagedNameList.tsx # generic CRUD list over an {id,name} lookup table
+├── components/ExternalLinkList.tsx # add/edit/delete web links for one equipment or part
 └── app/
     ├── layout.tsx           # Root layout: PWA meta, BottomNav
     ├── page.tsx             # Dashboard: overdue/upcoming rules + recent events
     ├── labels/page.tsx      # print QR labels for equipment/places (batch or single)
     ├── equipment/[id]/
-    │   ├── page.tsx         # Universal detail: info, lending, schedule, history, QR, parts
+    │   ├── page.tsx         # Universal detail: info, lending, schedule, history, QR, parts, links
     │   └── log/page.tsx     # Quick maintenance log (≤10s: 4-button type picker + note)
     ├── equipment/new/page.tsx  # Create form (kind selector); /assets|tools/new redirect here
     ├── assets/page.tsx      # Equipment list, kind=asset view (/assets/{id}* redirect to /equipment)
     ├── tools/page.tsx       # Equipment list, kind=tool view
     ├── storage/            # nestable tree + /storage/{id} contents
+    ├── settings/           # config hub (depth cap, location display) + /settings/categories
+    │                       #   (/categories redirects here — category lists are settings)
     └── scan/page.tsx        # Camera QR scanner (html5-qrcode, dynamic import)
 ```
 
@@ -89,7 +98,11 @@ Next.js 16 App Router. All pages are `'use client'` with client-side data fetchi
 - Equipment QR codes encode `window.location.origin + /equipment/{id}/log`; legacy
   `/assets/{id}/log` and `/storage/{type}/{id}` URLs on already-printed labels redirect
 - `StorageLocationPicker` self-loads places; `locationPath()`/`DEFAULT_LOCATION_ICON` live in `lib/storage.ts`
-- `NEXT_PUBLIC_API_URL` defaults to `http://localhost:8080`; override for non-localhost deployments
+- Location breadcrumbs: `formatLocationPath(id, places, settings)` for a *reference* to a
+  place (lists, dashboard, equipment labels — shortened per `AppSettings`), `locationPath()`
+  for a place's own heading/label, which always shows its full lineage. Pages needing either
+  must load `api.storageLocations.list()` (the flat tree) alongside their own data
+- `API_URL` (server-side, read by the `/api` proxy route) defaults to `http://localhost:8080`; `NEXT_PUBLIC_QR_BASE_URL` overrides the host baked into printed QR codes when behind a reverse proxy
 - `html5-qrcode` is dynamically imported in `scan/page.tsx` to avoid SSR issues
 
 ## Data Model
@@ -100,7 +113,11 @@ Equipment           { Id UUID, Name*, Kind(Asset|Tool|Both), CategoryId?→Categ
 EquipmentUsedOn     { EquipmentId, UsedOnEquipmentId }        # m:n self-link — assets a tool is used on
 EquipmentLoan       { Id, EquipmentId, Borrower*, LoanedAt (default now()), ReturnedAt? }
 MaintenanceEvent    { Id, EquipmentId, Type(maintenance|repair|cleaning|replacement), Note?, PhotoUrl?, CreatedAt }
-MaintenanceRule     { Id, EquipmentId, Name?, IntervalValue, IntervalUnit(Days|Weeks|Months|Years), LastDoneAt? }
+MaintenanceRule     { Id, EquipmentId, Name?, ScheduleType(Interval|DueDate),
+                      IntervalValue, IntervalUnit(Days|Weeks|Months|Years), LastDoneAt?,
+                      NextDueAt?, DueWindowValue, DueWindowUnit, ReminderLeadValue, ReminderLeadUnit }
+ExternalLink        { Id, Url*, Label*, EquipmentId? | PartId?, CreatedAt }   # user-entered web link
+AppSettings         { Id=1, StorageMaxDepth, PathShorteningMode(Full|LastNSegments), PathShorteningSegments }
 ```
 
 `Equipment` is the unified durable-item table (Asset + Tool merged). `Kind` is a
@@ -109,7 +126,23 @@ MaintenanceRule     { Id, EquipmentId, Name?, IntervalValue, IntervalUnit(Days|W
 Asset+Both, Tools = Tool+Both); the detail page `/equipment/{id}` is universal.
 (`Category` is first-class; parts/storage models are in the Parts & Storage section below.)
 
-Due/overdue logic (in `MaintenanceRule.Status`): `LastDoneAt + IntervalValue·IntervalUnit < UtcNow` → Overdue; within 30 days → Upcoming; `LastDoneAt` null → Due.
+Due/overdue logic (in `MaintenanceRule.Status`) supports two schedule types. *Interval*:
+due = `LastDoneAt + IntervalValue·IntervalUnit`, no grace window. *DueDate*: due =
+`NextDueAt`, going Overdue only after a `DueWindowValue·DueWindowUnit` grace period.
+Past the overdue point → Overdue; past due → Due; within `ReminderLeadValue·ReminderLeadUnit`
+of due (per-rule, default 30 days) → Upcoming; otherwise Ok. A rule with no `LastDoneAt`
+(or no `NextDueAt`) is Due — "never done".
+
+`ExternalLink` is a URL + label attached to one `Equipment` or one `Part` (nullable FKs,
+no navs — same shape as `DocumentLink`). The API assumes `https://` when no scheme is
+typed and rejects non-http(s) schemes, since the value lands in an `href`.
+
+`AppSettings` is a **single-row** table (`Id` always 1) of user-editable server-side
+config, read via `db.GetAppSettingsAsync()` (per request — no caching, so a PUT applies
+immediately). Env-var config stays in `appsettings`/`IOptions`; this table is only for
+what the Settings page changes. Deliberately no `HasDefaultValue` on its columns: the
+seeded row sets them all, and a DB default on `PathShorteningMode` would misfire because
+`Full` is enum value 0 (EF would read "chose Full" as "unset").
 
 ## REST API Surface
 
@@ -127,6 +160,8 @@ Documents:   GET /documents (?status=, ?equipment_id=, ?event_id=)  |  GET /docu
              |  POST /documents/upload (multipart)  |  PUT /documents/{id}/classify  |  POST /documents/{id}/ignore
              |  POST /documents/scan  |  DELETE /documents/{id}  |  POST /documents/prune-missing
 DocumentCategories: CRUD /document-categories
+ExternalLinks: POST/GET /external-links (?equipment_id=, ?part_id=)  |  PUT/DELETE /external-links/{id}
+AppSettings: GET/PUT /app-settings          # singleton — no /{id}; PUT also returns placesOverNewDepthCap
 ```
 
 ## Documents
@@ -181,8 +216,12 @@ PartUsage     { Id, MaintenanceEventId, PartId, QuantityUsed } # parts consumed 
 ### Unified storage (`StorageLocation`)
 
 `Location`/`Shelf`/`StorageBox` were collapsed into one self-referencing
-`StorageLocation { Id, Name*, Icon?, ParentId? }` (Room > Shelf > Box, or any nesting;
-API caps depth at 4). Every `Equipment` and `Part` references a single
+`StorageLocation { Id, Name*, Icon?, ParentId? }` (House > Floor > Room > Shelf > Box, or
+any nesting; max depth is the user-editable `AppSettings.StorageMaxDepth`, default 6,
+hard-capped at `AppSettings.AbsoluteStorageMaxDepth` = 16 — pinned to the 16-iteration
+guard in `locationPath`, which truncates silently, so data must never outgrow it.
+Lowering the setting grandfathers existing places and only gates new creates/moves).
+Every `Equipment` and `Part` references a single
 `StorageLocationId` at any depth. Each place has an optional emoji `Icon`
 (default `DEFAULT_LOCATION_ICON` in `lib/storage.ts`).
 
@@ -191,6 +230,8 @@ API caps depth at 4). Every `Equipment` and `Part` references a single
 - Frontend: `/storage` nestable tree (add/rename/**move**/delete) + `/storage/{id}` contents;
   `StorageLocationPicker` (typeahead + breadcrumb). Legacy `/storage/{type}/{id}` redirects
   to `/storage/{id}` via `next.config.ts`. `/locations` redirects to `/storage`.
+- The tree's indent caps at `INDENT_MAX_LEVELS` (`app/storage/page.tsx`) so a deep tree
+  doesn't push rows off a phone screen; the expand arrows still convey structure.
 
 ### Equipment merge (Asset + Tool)
 
@@ -202,7 +243,29 @@ page always offers maintenance schedule + history **and** lending. `UsedOn` is a
 self-referencing **many-to-many** ("used on / services", former `Tool.AssetId`; join
 table `EquipmentUsedOn`) — a tool can be used on several assets; purely associative,
 not maintenance ownership. Picked with `EquipmentMultiSelect`. `ToolCategory` folded into `Category`; `ToolLoan` → `EquipmentLoan`.
-`Category` was promoted from a free-text field to a first-class entity (`/categories`).
+`Category` was promoted from a free-text field to a first-class entity (managed at
+`/settings/categories`).
+
+## Settings
+
+`/settings` is the config hub and the app's only persisted user configuration —
+everything else is env-var-driven or (for genuinely device-specific print preferences,
+`labels.design` / `labels.formatId`) localStorage. It owns:
+
+- **Storage** — `StorageMaxDepth`.
+- **Location display** — `PathShorteningMode` + `PathShorteningSegments`, previewed live
+  against the user's own deepest place.
+- **`/settings/categories`** — the asset/part/document category lists, stacked
+  `ManagedNameList`s (a separate sub-page rather than one long scroll, since it's three
+  lists). `/categories` client-redirects here.
+
+Rows link out to `/labels`, `/storage` and `/documents`, which stay content pages in the
+"More" menu — Settings links to them without owning them.
+
+Settings live server-side (not localStorage) so they follow the user across devices, and
+so the deferred reminder/notification feature can read the same path-formatting policy;
+`Services/LocationPathFormatter.cs` is the C# twin of `lib/storage.ts`'s formatting,
+written for that consumer and not yet wired to an endpoint.
 
 ## Out of Scope (MVP)
 

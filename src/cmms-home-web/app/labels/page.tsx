@@ -3,8 +3,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Equipment, StorageLocation } from '@/lib/types'
-import { locationPath, DEFAULT_LOCATION_ICON } from '@/lib/storage'
+import type { AppSettings, Equipment, StorageLocation } from '@/lib/types'
+import { locationPath, formatLocationPath, DEFAULT_LOCATION_ICON } from '@/lib/storage'
 import PrintLabel, { type QrPosition, type LabelAlign } from '@/components/PrintLabel'
 import {
   LABEL_FORMATS, LABEL_FORMAT_GROUPS, PAGE_DIMENSIONS_MM,
@@ -71,6 +71,7 @@ function NumField({ label, value, onChange, step = 0.1, min = 0 }: {
 export default function LabelsPage() {
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [places, setPlaces] = useState<StorageLocation[]>([])
+  const [settings, setSettings] = useState<AppSettings>()
   const [loading, setLoading] = useState(true)
   const [origin, setOrigin] = useState('')
   const [onlyKey, setOnlyKey] = useState<string | null>(null)
@@ -114,22 +115,29 @@ export default function LabelsPage() {
   }, [formatId])
 
   useEffect(() => {
-    Promise.all([api.equipment.list(), api.storageLocations.list()])
-      .then(([eq, p]) => { setEquipment(eq); setPlaces(p) })
+    Promise.all([api.equipment.list(), api.storageLocations.list(), api.appSettings.get()])
+      .then(([eq, p, s]) => { setEquipment(eq); setPlaces(p); setSettings(s) })
       .finally(() => setLoading(false))
   }, [])
 
   const qrBase = process.env.NEXT_PUBLIC_QR_BASE_URL || origin
 
+  // The location line is the breadcrumb shortened per the user's policy, not just the
+  // leaf place name — "Bin 3" alone doesn't tell you which cabinet to walk to. Keeping it
+  // short matters here specifically: fontScale is fitted once across the WHOLE print run,
+  // so one deeply-nested item printing its full chain would shrink text on every label.
   const equipmentItems = useMemo<LabelItem[]>(() => equipment.map(e => ({
     key: `equipment:${e.id}`, kind: 'equipment', icon: e.kind === 'Tool' ? '🛠️' : '🔧', name: e.name,
-    lines: [e.category?.name, e.storageLocation?.name].filter(Boolean) as string[],
+    lines: [e.category?.name, formatLocationPath(e.storageLocationId, places, settings)].filter(Boolean) as string[],
     caption: 'Open',
     qrUrl: `${qrBase}/equipment/${e.id}`,
     maintenanceUrl: `${qrBase}/equipment/${e.id}/log`,
-  })), [equipment, qrBase])
+  })), [equipment, places, settings, qrBase])
 
   // Every storage location is a printable label; the subtitle is its ancestor breadcrumb.
+  // Deliberately the FULL lineage via locationPath (not the shortened formatLocationPath):
+  // a place's own label should say exactly where that place is. Only *references* to a
+  // location get shortened — don't "fix" this into uniformity.
   const placeItems = useMemo<LabelItem[]>(() => places.map(p => {
     const ancestors = locationPath(p.parentId, places)
     return {

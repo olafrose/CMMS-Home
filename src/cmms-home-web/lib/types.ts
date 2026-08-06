@@ -192,3 +192,28 @@ export interface ClassifyDocumentDto {
   title?: string
   links: { equipmentId?: string; maintenanceEventId?: string }[]
 }
+
+// A user-entered web link attached to one Equipment or one Part.
+export interface ExternalLink {
+  id: string
+  url: string
+  label: string
+  equipmentId: string | null
+  partId: string | null
+  createdAt: string
+}
+
+// Server-side user settings (single row; no id in the API surface).
+export type PathShorteningMode = 'Full' | 'LastNSegments'
+
+export interface AppSettings {
+  storageMaxDepth: number
+  pathShorteningMode: PathShorteningMode
+  pathShorteningSegments: number
+}
+
+export interface SaveAppSettingsResult {
+  settings: AppSettings
+  /** Places left deeper than a newly lowered cap — informational, not an error. */
+  placesOverNewDepthCap: number
+}

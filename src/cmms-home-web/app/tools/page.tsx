@@ -3,14 +3,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Equipment } from '@/lib/types'
+import { formatLocationPath } from '@/lib/storage'
+import type { AppSettings, Equipment, StorageLocation } from '@/lib/types'
 
 function openLoan(tool: Equipment) {
   return tool.loans?.find(l => !l.returnedAt)
 }
 
-function ToolRow({ tool }: { tool: Equipment }) {
+function ToolRow({ tool, locations, settings }: {
+  tool: Equipment
+  locations: StorageLocation[]
+  settings: AppSettings | undefined
+}) {
   const loan = openLoan(tool)
+  // Full breadcrumb (shortened per policy), not just the leaf place name — "Bin 3"
+  // alone doesn't say which cabinet in which room.
+  const path = formatLocationPath(tool.storageLocationId, locations, settings)
   return (
     <Link
       href={`/equipment/${tool.id}`}
@@ -18,7 +26,7 @@ function ToolRow({ tool }: { tool: Equipment }) {
     >
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{tool.name}</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{tool.storageLocation?.name ?? 'No location'}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{path || 'No location'}</p>
         {(tool.category || (tool.usedOn && tool.usedOn.length > 0)) && (
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {tool.category && (
@@ -89,13 +97,17 @@ function ActiveChip({ label, onClear }: { label: string; onClear: () => void }) 
 
 export default function ToolsPage() {
   const [tools, setTools] = useState<Equipment[]>([])
+  const [locations, setLocations] = useState<StorageLocation[]>([])
+  const [settings, setSettings] = useState<AppSettings>()
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
   const [activeAsset, setActiveAsset] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
   useEffect(() => {
-    api.equipment.list({ kind: 'tool' }).then(setTools).finally(() => setLoading(false))
+    Promise.all([api.equipment.list({ kind: 'tool' }), api.storageLocations.list(), api.appSettings.get()])
+      .then(([t, places, s]) => { setTools(t); setLocations(places); setSettings(s) })
+      .finally(() => setLoading(false))
   }, [])
 
   const assetOptions = useMemo(() => {
@@ -207,14 +219,14 @@ export default function ToolsPage() {
         <section className="mb-4">
           <h2 className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">Out on loan</h2>
           <ul className="space-y-2">
-            {onLoan.map(t => <li key={t.id}><ToolRow tool={t} /></li>)}
+            {onLoan.map(t => <li key={t.id}><ToolRow tool={t} locations={locations} settings={settings} /></li>)}
           </ul>
         </section>
       )}
 
       {available.length > 0 && (
         <ul className="space-y-2">
-          {available.map(t => <li key={t.id}><ToolRow tool={t} /></li>)}
+          {available.map(t => <li key={t.id}><ToolRow tool={t} locations={locations} settings={settings} /></li>)}
         </ul>
       )}
     </div>

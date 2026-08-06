@@ -55,5 +55,7 @@ app.MapPartUsageEndpoints();
 app.MapPartCategoryEndpoints();
 app.MapDocumentEndpoints();
 app.MapDocumentCategoryEndpoints();
+app.MapAppSettingsEndpoints();
+app.MapExternalLinkEndpoints();
 
 app.Run();

@@ -20,6 +20,8 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
     public DbSet<DocumentCategory> DocumentCategories => Set<DocumentCategory>();
     public DbSet<DocumentMove> DocumentMoves => Set<DocumentMove>();
+    public DbSet<AppSettings> AppSettings => Set<AppSettings>();
+    public DbSet<ExternalLink> ExternalLinks => Set<ExternalLink>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -180,6 +182,39 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .HasOne(m => m.Document)
             .WithMany()
             .HasForeignKey(m => m.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Single-row settings table. Id is fixed at 1 (never generated), and the row is
+        // seeded by the migration so a fresh DB has working values from the start.
+        //
+        // Deliberately NO HasDefaultValue() on the value columns: the seed row sets every
+        // column explicitly, so DB-level defaults would never be used — except harmfully.
+        // PathShorteningMode.Full is enum value 0, i.e. the CLR default, so EF would treat
+        // "the user chose Full" as "unset" and write the default instead. Defaults live in
+        // the C# property initializers, the seeded row, and GetAppSettingsAsync's fallback.
+        modelBuilder.Entity<AppSettings>()
+            .Property(s => s.Id)
+            .ValueGeneratedNever();
+
+        modelBuilder.Entity<AppSettings>()
+            .HasData(new AppSettings());
+
+        // An external link points at one Equipment or one Part (same FK-only shape as
+        // DocumentLink); deleting the parent takes its links with it.
+        modelBuilder.Entity<ExternalLink>()
+            .Property(l => l.CreatedAt)
+            .HasDefaultValueSql("now()");
+
+        modelBuilder.Entity<ExternalLink>()
+            .HasOne<Equipment>()
+            .WithMany()
+            .HasForeignKey(l => l.EquipmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExternalLink>()
+            .HasOne<Part>()
+            .WithMany()
+            .HasForeignKey(l => l.PartId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

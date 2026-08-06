@@ -18,6 +18,12 @@ function descendantIds(id: string, all: StorageLocation[]): Set<string> {
   return out
 }
 
+// Indent stops growing past this many levels: nesting depth is user-configurable (up to
+// 16), and an uncapped indent would push rows off a phone screen on a deep tree. The
+// expand/collapse arrows still convey the structure.
+const INDENT_MAX_LEVELS = 4
+const indentOf = (depth: number) => Math.min(depth, INDENT_MAX_LEVELS) * 16
+
 function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
   node: StorageLocation
   all: StorageLocation[]
@@ -41,7 +47,7 @@ function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
   return (
     <li>
       <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700"
-        style={{ marginLeft: depth * 16 }}>
+        style={{ marginLeft: indentOf(depth) }}>
         <button onClick={() => setExpanded(v => !v)} className="text-slate-400 w-4 text-sm" aria-label="Expand">
           {kids.length ? (expanded ? '▾' : '▸') : '·'}
         </button>
@@ -72,7 +78,7 @@ function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
       </div>
 
       {editing && (
-        <div className="flex items-center gap-1 flex-wrap my-1" style={{ marginLeft: depth * 16 + 24 }}>
+        <div className="flex items-center gap-1 flex-wrap my-1" style={{ marginLeft: indentOf(depth) + 24 }}>
           {LOCATION_ICON_CHOICES.map(c => (
             <button key={c} onClick={() => setIcon(c)}
               className={`w-7 h-7 rounded-lg text-base leading-none ${icon === c ? 'bg-blue-100 dark:bg-blue-900/40 ring-1 ring-blue-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
@@ -84,7 +90,7 @@ function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
       )}
 
       {moving && (
-        <div className="flex items-center gap-2 my-1" style={{ marginLeft: depth * 16 + 24 }}>
+        <div className="flex items-center gap-2 my-1" style={{ marginLeft: indentOf(depth) + 24 }}>
           <span className="text-xs text-slate-500">Move under</span>
           <select defaultValue={node.parentId ?? ''} onChange={async e => { await onMove(node.id, e.target.value || undefined); setMoving(false) }}
             className="field flex-1 text-sm py-1">
@@ -98,7 +104,7 @@ function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
       )}
 
       {adding && (
-        <div className="flex items-center gap-2 my-1" style={{ marginLeft: depth * 16 + 24 }}>
+        <div className="flex items-center gap-2 my-1" style={{ marginLeft: indentOf(depth) + 24 }}>
           <input autoFocus value={childName} onChange={e => setChildName(e.target.value)}
             onKeyDown={async e => { if (e.key === 'Enter' && childName.trim()) { await onAdd(node.id, childName.trim()); setChildName('') } }}
             placeholder="New place inside…" className="field flex-1 text-sm py-1" />

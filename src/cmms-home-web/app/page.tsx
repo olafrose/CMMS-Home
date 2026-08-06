@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Equipment, MaintenanceEvent, MaintenanceRule, Part } from '@/lib/types'
+import { formatLocationPath } from '@/lib/storage'
+import type { AppSettings, Equipment, MaintenanceEvent, MaintenanceRule, Part, StorageLocation } from '@/lib/types'
 
 function addInterval(date: Date, value: number, unit: MaintenanceRule['intervalUnit']): Date {
   const d = new Date(date)
@@ -55,25 +56,42 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// Where the thing is, shortened per the user's policy. Without this, two similarly
+// named assets are indistinguishable in these lists.
+function PathLine({ path }: { path: string }) {
+  if (!path) return null
+  return <p className="text-xs text-slate-400 dark:text-slate-500">{path}</p>
+}
+
 export default function DashboardPage() {
   const [equipment, setEquipment] = useState<Record<string, Equipment>>({})
   const [rules, setRules] = useState<MaintenanceRule[]>([])
   const [events, setEvents] = useState<MaintenanceEvent[]>([])
   const [lowStockParts, setLowStockParts] = useState<Part[]>([])
   const [loanedEquipment, setLoanedEquipment] = useState<Equipment[]>([])
+  const [locations, setLocations] = useState<StorageLocation[]>([])
+  const [settings, setSettings] = useState<AppSettings>()
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([api.equipment.list(), api.rules.list(), api.events.list(), api.parts.list({ lowStock: true }), api.equipment.list({ onLoan: true })])
-      .then(([eq, r, e, p, loaned]) => {
+    Promise.all([
+      api.equipment.list(), api.rules.list(), api.events.list(), api.parts.list({ lowStock: true }),
+      api.equipment.list({ onLoan: true }), api.storageLocations.list(), api.appSettings.get(),
+    ])
+      .then(([eq, r, e, p, loaned, places, s]) => {
         setEquipment(Object.fromEntries(eq.map((x) => [x.id, x])))
         setRules(r.sort((a, b) => daysRelative(a) - daysRelative(b)))
         setEvents(e.slice(0, 5))
         setLowStockParts(p)
         setLoanedEquipment(loaned)
+        setLocations(places)
+        setSettings(s)
       })
       .finally(() => setLoading(false))
   }, [])
+
+  // Breadcrumb for anything holding a storageLocationId.
+  const pathOf = (locationId?: string) => formatLocationPath(locationId, locations, settings)
 
   const overdue = rules.filter((r) => r.status === 'Overdue' || r.status === 'Due')
   const upcoming = rules.filter((r) => r.status === 'Upcoming')
@@ -115,6 +133,7 @@ export default function DashboardPage() {
                   >
                     <div>
                       <p className="font-semibold text-slate-800 dark:text-slate-100">{equipment[r.equipmentId]?.name ?? '…'}</p>
+                      <PathLine path={pathOf(equipment[r.equipmentId]?.storageLocationId)} />
                       {r.name && <p className="text-xs text-slate-600 dark:text-slate-300">{r.name}</p>}
                       <p className="text-xs text-red-600 dark:text-red-400 font-medium">{dueLabel(r)}</p>
                     </div>
@@ -139,6 +158,7 @@ export default function DashboardPage() {
                   >
                     <div>
                       <p className="font-medium text-slate-800 dark:text-slate-100">{equipment[r.equipmentId]?.name ?? '…'}</p>
+                      <PathLine path={pathOf(equipment[r.equipmentId]?.storageLocationId)} />
                       {r.name && <p className="text-xs text-slate-600 dark:text-slate-300">{r.name}</p>}
                       <p className="text-xs text-amber-700 dark:text-amber-400">{dueLabel(r)}</p>
                     </div>
@@ -176,6 +196,7 @@ export default function DashboardPage() {
                   >
                     <div>
                       <p className="font-medium text-slate-800 dark:text-slate-100">{p.name}</p>
+                      <PathLine path={pathOf(p.storageLocationId)} />
                       <p className="text-xs text-amber-700 dark:text-amber-400">
                         {p.quantity} {p.unit} remaining (min {p.minQuantity})
                       </p>
@@ -203,6 +224,7 @@ export default function DashboardPage() {
                     >
                       <div>
                         <p className="font-medium text-slate-800 dark:text-slate-100">{t.name}</p>
+                        <PathLine path={pathOf(t.storageLocationId)} />
                         {loan && (
                           <p className="text-xs text-amber-700 dark:text-amber-400">
                             {loan.borrower} · since {formatDate(loan.loanedAt)}
@@ -231,6 +253,7 @@ export default function DashboardPage() {
                   >
                     <div>
                       <p className="font-medium text-slate-800 dark:text-slate-100">{equipment[e.equipmentId]?.name ?? '…'}</p>
+                      <PathLine path={pathOf(equipment[e.equipmentId]?.storageLocationId)} />
                       <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{e.type}</p>
                     </div>
                     <span className="text-xs text-slate-400 dark:text-slate-500">{formatDate(e.createdAt)}</span>

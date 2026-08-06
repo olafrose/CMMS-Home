@@ -13,11 +13,14 @@ const tabs = [
   { href: '/scan', label: 'Scan', icon: '📷' },
 ]
 
+// Content views plus Settings, which owns the configuration pages (categories live
+// under /settings/categories now).
 const manageLinks = [
   { href: '/tools', label: 'Tools', icon: '🛠️' },
-  { href: '/categories', label: 'Categories', icon: '🏷️' },
   { href: '/storage', label: 'Storage', icon: '🗄️' },
   { href: '/documents', label: 'Documents', icon: '📄' },
+  { href: '/labels', label: 'Labels', icon: '🖨️' },
+  { href: '/settings', label: 'Settings', icon: '⚙️' },
 ]
 
 export default function BottomNav() {

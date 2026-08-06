@@ -9,6 +9,7 @@ import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
 import { DocumentPreviewButton } from '@/components/DocumentPreview'
 import { locationPath } from '@/lib/storage'
+import ExternalLinkList from '@/components/ExternalLinkList'
 import { api } from '@/lib/api'
 import type {
   Category, Document, Equipment, EquipmentKind, IntervalUnit, MaintenanceEvent, MaintenanceRule,
@@ -454,6 +455,9 @@ export default function EquipmentDetailPage() {
           </ul>
         </section>
       )}
+
+      {/* External links (manual, spec sheet, repair video) */}
+      <ExternalLinkList equipmentId={id} />
 
       {/* Documents linked to this equipment */}
       {documents.length > 0 && (

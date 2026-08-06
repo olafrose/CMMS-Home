@@ -2,6 +2,7 @@ import type {
   Category, Equipment, MaintenanceEvent, MaintenanceRule, Part, PartCategory, PartUsage, StorageLocation,
   StorageLocationContents, Document, DocumentCategory, ClassifyDocumentDto,
   CreateEquipmentDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
+  AppSettings, SaveAppSettingsResult, ExternalLink,
 } from './types'
 
 const API_BASE = '/api'
@@ -163,5 +164,24 @@ export const api = {
       request<PartUsage>('/part-usages', { method: 'POST', body: JSON.stringify({ maintenanceEventId, partId, quantityUsed }) }),
     delete: (id: string) =>
       request<void>(`/part-usages/${id}`, { method: 'DELETE' }),
+  },
+  externalLinks: {
+    list: (opts: { equipmentId?: string; partId?: string }) => {
+      const params = new URLSearchParams()
+      if (opts.equipmentId) params.set('equipment_id', opts.equipmentId)
+      if (opts.partId) params.set('part_id', opts.partId)
+      return request<ExternalLink[]>(`/external-links?${params}`)
+    },
+    create: (dto: { url: string; label: string; equipmentId?: string; partId?: string }) =>
+      request<ExternalLink>('/external-links', { method: 'POST', body: JSON.stringify(dto) }),
+    update: (id: string, dto: { url: string; label: string }) =>
+      request<ExternalLink>(`/external-links/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
+    delete: (id: string) =>
+      request<void>(`/external-links/${id}`, { method: 'DELETE' }),
+  },
+  appSettings: {
+    get: () => request<AppSettings>('/app-settings'),
+    update: (dto: AppSettings) =>
+      request<SaveAppSettingsResult>('/app-settings', { method: 'PUT', body: JSON.stringify(dto) }),
   },
 }

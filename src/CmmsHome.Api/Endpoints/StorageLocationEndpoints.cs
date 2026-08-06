@@ -6,9 +6,9 @@ namespace CmmsHome.Api.Endpoints;
 
 public static class StorageLocationEndpoints
 {
-    // Root is depth 1; a place can be nested at most this deep.
-    private const int MaxDepth = 4;
-
+    // Root is depth 1; how deep a place may nest is the user-editable
+    // AppSettings.StorageMaxDepth (default 6), itself capped at
+    // AppSettings.AbsoluteStorageMaxDepth.
     public static void MapStorageLocationEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/storage-locations").WithTags("StorageLocations");
@@ -66,8 +66,9 @@ public static class StorageLocationEndpoints
             {
                 if (all.All(s => s.Id != pid))
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["parentId"] = ["Parent not found"] });
-                if (DepthOf(pid, all) + 1 > MaxDepth)
-                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["parentId"] = [$"Max nesting depth is {MaxDepth}"] });
+                var maxDepth = (await db.GetAppSettingsAsync()).StorageMaxDepth;
+                if (DepthOf(pid, all) + 1 > maxDepth)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["parentId"] = [$"Max nesting depth is {maxDepth}"] });
             }
 
             var loc = new StorageLocation
@@ -102,8 +103,9 @@ public static class StorageLocationEndpoints
                         return Results.ValidationProblem(new Dictionary<string, string[]> { ["parentId"] = ["Parent not found"] });
                     if (IsDescendant(pid, id, all))
                         return Results.ValidationProblem(new Dictionary<string, string[]> { ["parentId"] = ["Cannot move a place into its own subtree"] });
-                    if (DepthOf(pid, all) + 1 + SubtreeHeight(id, all) - 1 > MaxDepth)
-                        return Results.ValidationProblem(new Dictionary<string, string[]> { ["parentId"] = [$"Move would exceed max depth of {MaxDepth}"] });
+                    var maxDepth = (await db.GetAppSettingsAsync()).StorageMaxDepth;
+                    if (DepthOf(pid, all) + 1 + SubtreeHeight(id, all) - 1 > maxDepth)
+                        return Results.ValidationProblem(new Dictionary<string, string[]> { ["parentId"] = [$"Move would exceed max depth of {maxDepth}"] });
                 }
             }
 
@@ -127,7 +129,8 @@ public static class StorageLocationEndpoints
         });
     }
 
-    static int DepthOf(Guid id, List<StorageLocation> all)
+    // internal: AppSettingsEndpoints reuses this to count places left over a lowered cap.
+    internal static int DepthOf(Guid id, List<StorageLocation> all)
     {
         var byId = all.ToDictionary(s => s.Id);
         var depth = 1;

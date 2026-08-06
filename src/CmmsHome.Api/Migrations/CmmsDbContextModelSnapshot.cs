@@ -22,6 +22,34 @@ namespace CmmsHome.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("CmmsHome.Api.Models.AppSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PathShorteningMode")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PathShorteningSegments")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StorageMaxDepth")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AppSettings");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            PathShorteningMode = 1,
+                            PathShorteningSegments = 2,
+                            StorageMaxDepth = 6
+                        });
+                });
+
             modelBuilder.Entity("CmmsHome.Api.Models.Category", b =>
                 {
                     b.Property<Guid>("Id")
@@ -255,6 +283,40 @@ namespace CmmsHome.Api.Migrations
                     b.HasIndex("UsedOnEquipmentId");
 
                     b.ToTable("EquipmentUsedOn");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.ExternalLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<Guid?>("EquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("PartId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId");
+
+                    b.HasIndex("PartId");
+
+                    b.ToTable("ExternalLinks");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.MaintenanceEvent", b =>
@@ -539,6 +601,19 @@ namespace CmmsHome.Api.Migrations
                         .HasForeignKey("UsedOnEquipmentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.ExternalLink", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.Equipment", null)
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("CmmsHome.Api.Models.Part", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.MaintenanceEvent", b =>
