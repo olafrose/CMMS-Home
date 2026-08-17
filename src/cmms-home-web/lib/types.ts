@@ -70,6 +70,14 @@ export interface Equipment {
   storageLocation?: StorageLocation
   imageUrl?: string
   notes?: string
+  /** When the item was bought — distinct from createdAt (when the row was added). */
+  purchasedAt?: string
+  warrantyMonths?: number
+  /** Absolute override; wins over purchasedAt + warrantyMonths when set. */
+  warrantyUntil?: string
+  /** Computed server-side. Do NOT re-derive: the month arithmetic lives in Equipment.cs. */
+  warrantyExpiresAt: string | null
+  warrantyStatus: WarrantyStatus
   usedOn?: Equipment[]   // other equipment this (tool) is used on (many-to-many)
   createdAt: string
   loans?: EquipmentLoan[]
@@ -105,6 +113,10 @@ export interface MaintenanceRule {
   overdueAt: string | null
 }
 
+// A warranty is a fact with a deadline, not an obligation — hence its own vocabulary
+// rather than reusing MaintenanceStatus. Unknown = nothing recorded.
+export type WarrantyStatus = 'Unknown' | 'Active' | 'ExpiringSoon' | 'Expired'
+
 export interface CreateEquipmentDto {
   name: string
   kind: EquipmentKind
@@ -113,6 +125,9 @@ export interface CreateEquipmentDto {
   imageUrl?: string
   notes?: string
   usedOnEquipmentIds?: string[]
+  purchasedAt?: string
+  warrantyMonths?: number
+  warrantyUntil?: string
 }
 
 export interface CreateEventDto {

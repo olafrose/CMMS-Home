@@ -10,10 +10,11 @@ import StorageLocationPicker from '@/components/StorageLocationPicker'
 import { DocumentPreviewButton } from '@/components/DocumentPreview'
 import { locationPath } from '@/lib/storage'
 import ExternalLinkList from '@/components/ExternalLinkList'
+import WarrantyFields, { EMPTY_WARRANTY, warrantyFromEquipment, warrantyToDto, type WarrantyValues } from '@/components/WarrantyFields'
 import { api } from '@/lib/api'
 import type {
   Category, Document, Equipment, EquipmentKind, IntervalUnit, MaintenanceEvent, MaintenanceRule,
-  MaintenanceStatus, Part, ScheduleType, StorageLocation,
+  MaintenanceStatus, Part, ScheduleType, StorageLocation, WarrantyStatus,
 } from '@/lib/types'
 
 const INTERVAL_UNITS: IntervalUnit[] = ['Days', 'Weeks', 'Months', 'Years']
@@ -35,6 +36,15 @@ function scheduleSummary(rule: MaintenanceRule): { primary: string; secondary: s
     primary: `Every ${spanLabel(rule.intervalValue, rule.intervalUnit)}`,
     secondary: rule.lastDoneAt ? `Last: ${formatDate(rule.lastDoneAt)}` : 'Never done',
   }
+}
+const warrantyColor: Record<WarrantyStatus, string> = {
+  Expired: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+  ExpiringSoon: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
+  Active: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
+  Unknown: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
+}
+const warrantyLabel: Record<WarrantyStatus, string> = {
+  Expired: 'Expired', ExpiringSoon: 'Ending soon', Active: 'Active', Unknown: '—',
 }
 const statusColor: Record<MaintenanceStatus, string> = {
   Overdue: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
@@ -179,7 +189,9 @@ export default function EquipmentDetailPage() {
   const [storageLocationId, setStorageLocationId] = useState<string | null>(null)
   const [usedOnIds, setUsedOnIds] = useState<string[]>([])
   const [notes, setNotes] = useState('')
+  const [warranty, setWarranty] = useState<WarrantyValues>(EMPTY_WARRANTY)
   const [savingItem, setSavingItem] = useState(false)
+  const [itemError, setItemError] = useState('')
 
   // Loan
   const [borrower, setBorrower] = useState('')
@@ -195,6 +207,7 @@ export default function EquipmentDetailPage() {
   function seed(e: Equipment) {
     setName(e.name); setKind(e.kind); setCategoryId(e.categoryId ?? null)
     setStorageLocationId(e.storageLocationId ?? null); setUsedOnIds(e.usedOn?.map(u => u.id) ?? []); setNotes(e.notes ?? '')
+    setWarranty(warrantyFromEquipment(e))
   }
 
   useEffect(() => {
@@ -211,6 +224,7 @@ export default function EquipmentDetailPage() {
 
   async function saveItem() {
     setSavingItem(true)
+    setItemError('')
     try {
       const updated = await api.equipment.update(id, {
         name: name.trim(), kind,
@@ -219,8 +233,12 @@ export default function EquipmentDetailPage() {
         usedOnEquipmentIds: usedOnIds.length ? usedOnIds : undefined,
         notes: notes.trim() || undefined,
         imageUrl: item?.imageUrl,
+        ...warrantyToDto(warranty),
       })
       setItem(updated); setEditing(false)
+    } catch {
+      // The API rejects a warranty period with nothing to count it from.
+      setItemError('Could not save — check the purchase date and warranty period.')
     } finally { setSavingItem(false) }
   }
 
@@ -304,10 +322,12 @@ export default function EquipmentDetailPage() {
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Used on (optional)</label>
             <EquipmentMultiSelect equipment={allEquipment.filter(e => e.id !== id)} value={usedOnIds} onChange={setUsedOnIds} />
           </div>
+          <WarrantyFields value={warranty} onChange={setWarranty} />
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Notes (optional)</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="field" />
           </div>
+          {itemError && <p className="text-sm text-red-500">{itemError}</p>}
           <button onClick={saveItem} disabled={savingItem} className="w-full bg-blue-600 text-white font-semibold py-2 rounded-xl disabled:opacity-50">
             {savingItem ? 'Saving…' : 'Save Changes'}
           </button>
@@ -329,6 +349,18 @@ export default function EquipmentDetailPage() {
                   <Link href={`/equipment/${u.id}`} className="text-blue-600 dark:text-blue-400">{u.name}</Link>
                 </span>
               ))}
+            </p>
+          )}
+          {item.purchasedAt && <p className="text-sm text-slate-500 dark:text-slate-400"><span className="font-medium text-slate-700 dark:text-slate-300">Purchased:</span> {formatDate(item.purchasedAt)}</p>}
+          {item.warrantyExpiresAt && (
+            <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2">
+              <span>
+                <span className="font-medium text-slate-700 dark:text-slate-300">Warranty:</span>{' '}
+                {item.warrantyStatus === 'Expired' ? 'expired' : 'until'} {formatDate(item.warrantyExpiresAt)}
+              </span>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${warrantyColor[item.warrantyStatus]}`}>
+                {warrantyLabel[item.warrantyStatus]}
+              </span>
             </p>
           )}
           {item.notes && <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap pt-1">{item.notes}</p>}

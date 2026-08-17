@@ -40,6 +40,8 @@ public static class EquipmentEndpoints
         {
             if (string.IsNullOrWhiteSpace(dto.Name))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["Name is required"] });
+            if (ValidateWarranty(dto) is Dictionary<string, string[]> warrantyErrors)
+                return Results.ValidationProblem(warrantyErrors);
 
             var newId = Guid.NewGuid();
             var e = new Equipment
@@ -52,6 +54,9 @@ public static class EquipmentEndpoints
                 ImageUrl = dto.ImageUrl,
                 Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes!.Trim(),
                 UsedOn = await ResolveUsedOn(db, dto.UsedOnEquipmentIds, newId),
+                PurchasedAt = dto.PurchasedAt,
+                WarrantyMonths = dto.WarrantyMonths,
+                WarrantyUntil = dto.WarrantyUntil,
                 CreatedAt = DateTime.UtcNow,
             };
             db.Equipment.Add(e);
@@ -63,6 +68,8 @@ public static class EquipmentEndpoints
         {
             var e = await db.Equipment.Include(x => x.UsedOn).FirstOrDefaultAsync(x => x.Id == id);
             if (e is null) return Results.NotFound();
+            if (ValidateWarranty(dto) is Dictionary<string, string[]> warrantyErrors)
+                return Results.ValidationProblem(warrantyErrors);
 
             e.Name = dto.Name?.Trim() ?? e.Name;
             e.Kind = dto.Kind;
@@ -70,6 +77,9 @@ public static class EquipmentEndpoints
             e.StorageLocationId = dto.StorageLocationId;
             e.ImageUrl = dto.ImageUrl;
             e.Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes!.Trim();
+            e.PurchasedAt = dto.PurchasedAt;
+            e.WarrantyMonths = dto.WarrantyMonths;
+            e.WarrantyUntil = dto.WarrantyUntil;
 
             // Reconcile the "used on" links to the requested set (self excluded).
             e.UsedOn.Clear();
@@ -117,6 +127,22 @@ public static class EquipmentEndpoints
         });
     }
 
+    // Null when the warranty fields are coherent, otherwise the problems.
+    private static Dictionary<string, string[]>? ValidateWarranty(SaveEquipmentDto dto)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (dto.WarrantyMonths is int m && m < 1)
+            errors["warrantyMonths"] = ["Must be at least 1 month"];
+
+        // A duration with nothing to count from silently yields no expiry date, which
+        // looks like the entry was lost. Ask for the purchase date, or an absolute end.
+        if (dto.WarrantyMonths.HasValue && dto.PurchasedAt is null && dto.WarrantyUntil is null)
+            errors["purchasedAt"] = ["A purchase date is needed to count the warranty period from"];
+
+        return errors.Count > 0 ? errors : null;
+    }
+
     private static Task<Equipment?> LoadOne(CmmsDbContext db, Guid id) =>
         db.Equipment
             .Include(e => e.Category)
@@ -135,6 +161,7 @@ public static class EquipmentEndpoints
 }
 
 record SaveEquipmentDto(string Name, EquipmentKind Kind, Guid? CategoryId, Guid? StorageLocationId,
-    string? ImageUrl, string? Notes, List<Guid>? UsedOnEquipmentIds);
+    string? ImageUrl, string? Notes, List<Guid>? UsedOnEquipmentIds,
+    DateTime? PurchasedAt, int? WarrantyMonths, DateTime? WarrantyUntil);
 
 record CheckoutDto(string Borrower);

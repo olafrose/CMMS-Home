@@ -8,6 +8,7 @@ import type { Category, Equipment, EquipmentKind } from '@/lib/types'
 import EntityCombobox from '@/components/EntityCombobox'
 import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
+import WarrantyFields, { EMPTY_WARRANTY, warrantyToDto, type WarrantyValues } from '@/components/WarrantyFields'
 
 const KIND_OPTIONS: { value: EquipmentKind; label: string }[] = [
   { value: 'Asset', label: 'Asset' },
@@ -24,6 +25,7 @@ export default function NewEquipmentPage() {
   // Where the user came from (a storage place, if launched from its "add here").
   const [fromLocationId, setFromLocationId] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
+  const [warranty, setWarranty] = useState<WarrantyValues>(EMPTY_WARRANTY)
   const [categories, setCategories] = useState<Category[]>([])
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [usedOnIds, setUsedOnIds] = useState<string[]>([])
@@ -62,6 +64,7 @@ export default function NewEquipmentPage() {
         storageLocationId: storageLocationId ?? undefined,
         usedOnEquipmentIds: usedOnIds.length ? usedOnIds : undefined,
         notes: notes.trim() || undefined,
+        ...warrantyToDto(warranty),
       })
       router.push(`/equipment/${created.id}`)
     } catch {
@@ -132,6 +135,8 @@ export default function NewEquipmentPage() {
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Used on (optional)</label>
           <EquipmentMultiSelect equipment={equipment} value={usedOnIds} onChange={setUsedOnIds} />
         </div>
+
+        <WarrantyFields value={warranty} onChange={setWarranty} />
 
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Notes</label>

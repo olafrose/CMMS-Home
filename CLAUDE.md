@@ -109,7 +109,7 @@ Next.js 16 App Router. All pages are `'use client'` with client-side data fetchi
 
 ```
 Equipment           { Id UUID, Name*, Kind(Asset|Tool|Both), CategoryId?→Category, StorageLocationId?→StorageLocation,
-                      ImageUrl?, Notes?, CreatedAt }
+                      ImageUrl?, Notes?, PurchasedAt?, WarrantyMonths?, WarrantyUntil?, CreatedAt }
 EquipmentUsedOn     { EquipmentId, UsedOnEquipmentId }        # m:n self-link — assets a tool is used on
 EquipmentLoan       { Id, EquipmentId, Borrower*, LoanedAt (default now()), ReturnedAt? }
 MaintenanceEvent    { Id, EquipmentId, Type(maintenance|repair|cleaning|replacement), Note?, PhotoUrl?, CreatedAt }
@@ -132,6 +132,31 @@ due = `LastDoneAt + IntervalValue·IntervalUnit`, no grace window. *DueDate*: du
 Past the overdue point → Overdue; past due → Due; within `ReminderLeadValue·ReminderLeadUnit`
 of due (per-rule, default 30 days) → Upcoming; otherwise Ok. A rule with no `LastDoneAt`
 (or no `NextDueAt`) is Due — "never done".
+
+**Dates are day-granular, and the server owns the arithmetic.** Due/expiry values are
+stored at midnight, so a thing due (or expiring) on date D stays Due/Active for the whole
+of D and only turns Overdue/Expired at the start of D+1 — hence the `.Date.AddDays(1)`
+in both `MaintenanceRule.OverdueAt` and `Equipment.WarrantyStatus`. Comparing against the
+raw midnight instant instead made something due *today* read as overdue.
+
+Consequently `MaintenanceRule` serializes computed `DueAt`/`OverdueAt` beside `Status`,
+and `Equipment` serializes computed `WarrantyExpiresAt`/`WarrantyStatus`. All are
+getter-only, so EF maps no columns for them. **The frontend must not re-derive these** —
+it did once (re-implementing the interval maths in TS to render "98 days overdue"), which
+could disagree with `Status` and show an "Overdue" badge next to "Due in 3 days". Clients
+format the instants they are handed; the schedule/warranty maths lives in the model only.
+
+`Equipment` warranty: `WarrantyUntil` is an absolute override that wins outright;
+otherwise expiry = `PurchasedAt + WarrantyMonths`. The override exists for cover starting
+at delivery/installation rather than purchase, and for extensions outliving the base
+warranty. `WarrantyStatus` (Unknown|Active|ExpiringSoon|Expired) is deliberately its own
+vocabulary — a warranty is a fact with a deadline, not an obligation, so nothing
+"completes" it and Due/Overdue would read wrong. `ExpiringSoon` uses a fixed 60-day lead
+(`Equipment.ExpiringSoonDays`) rather than an `AppSettings` field, because nothing
+surfaces warranties outside the detail page yet; promote it if that changes. Note
+`PurchasedAt` is when the item was *bought* — distinct from `CreatedAt`, when the row was
+added. Proof of purchase is already covered by the seeded `Receipt`/`Invoice`/`Warranty`
+document categories, so warranty adds only the structured dates.
 
 `ExternalLink` is a URL + label attached to one `Equipment` or one `Part` (nullable FKs,
 no navs — same shape as `DocumentLink`). The API assumes `https://` when no scheme is

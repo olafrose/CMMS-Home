@@ -230,8 +230,17 @@ namespace CmmsHome.Api.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("PurchasedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("StorageLocationId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("WarrantyMonths")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("WarrantyUntil")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
