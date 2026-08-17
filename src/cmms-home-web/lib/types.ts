@@ -98,6 +98,11 @@ export interface MaintenanceRule {
   reminderLeadValue: number
   reminderLeadUnit: IntervalUnit
   status: MaintenanceStatus
+  /** Computed server-side alongside `status`. null = never done / no date set.
+   *  Do NOT re-derive these from the interval fields: the schedule arithmetic lives in
+   *  MaintenanceRule.cs, and a second copy here can disagree with `status`. */
+  dueAt: string | null
+  overdueAt: string | null
 }
 
 export interface CreateEquipmentDto {

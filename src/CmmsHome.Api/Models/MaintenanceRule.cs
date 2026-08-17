@@ -23,27 +23,38 @@ public class MaintenanceRule
 
     public Equipment Equipment { get; set; } = null!;
 
+    // DueAt/OverdueAt/Status are computed (getter-only, so EF maps no column for them)
+    // and serialize with the rule. They are deliberately part of the API surface: the
+    // frontend used to re-derive the due date in TypeScript to render "98 days overdue",
+    // which duplicated the schedule semantics below and could disagree with Status —
+    // showing an "Overdue" badge next to "Due in 3 days". Schedule arithmetic lives
+    // here only; clients format the instants they are given.
+
+    /// When this rule comes due. Null = "never done" / no date set, which reads as Due.
+    public DateTime? DueAt => ScheduleType == ScheduleType.DueDate
+        ? NextDueAt
+        : LastDoneAt is DateTime last ? AddSpan(last, IntervalValue, IntervalUnit) : null;
+
+    /// The instant it becomes Overdue: the start of the day *after* the due date, plus
+    /// any grace window (interval rules have no window).
+    ///
+    /// These are due *dates*, stored at midnight — so a rule is Due for the whole of its
+    /// due day and only turns Overdue once that day has fully elapsed. Comparing against
+    /// the raw midnight instant instead made a rule due today report Overdue from
+    /// 00:00:01, and the dashboard label then read "1 day overdue" on the due date itself.
+    public DateTime? OverdueAt => DueAt is DateTime due
+        ? (ScheduleType == ScheduleType.DueDate ? AddSpan(due, DueWindowValue, DueWindowUnit) : due)
+            .Date.AddDays(1)
+        : null;
+
     public MaintenanceStatus Status
     {
         get
         {
-            DateTime due;
-            DateTime overdueAfter;
-            if (ScheduleType == ScheduleType.DueDate)
-            {
-                if (NextDueAt is null) return MaintenanceStatus.Due;
-                due = NextDueAt.Value;
-                overdueAfter = AddSpan(due, DueWindowValue, DueWindowUnit);
-            }
-            else
-            {
-                if (LastDoneAt is null) return MaintenanceStatus.Due;
-                due = AddSpan(LastDoneAt.Value, IntervalValue, IntervalUnit);
-                overdueAfter = due; // interval rules have no grace window
-            }
-
+            if (DueAt is not DateTime due) return MaintenanceStatus.Due; // never done
             var now = DateTime.UtcNow;
-            if (now > overdueAfter) return MaintenanceStatus.Overdue;
+
+            if (OverdueAt is DateTime overdueAt && now >= overdueAt) return MaintenanceStatus.Overdue;
             if (now >= due) return MaintenanceStatus.Due;
             if (now >= AddSpan(due, -ReminderLeadValue, ReminderLeadUnit)) return MaintenanceStatus.Upcoming;
             return MaintenanceStatus.Ok;

@@ -6,46 +6,28 @@ import { api } from '@/lib/api'
 import { formatLocationPath } from '@/lib/storage'
 import type { AppSettings, Equipment, MaintenanceEvent, MaintenanceRule, Part, StorageLocation } from '@/lib/types'
 
-function addInterval(date: Date, value: number, unit: MaintenanceRule['intervalUnit']): Date {
-  const d = new Date(date)
-  if (unit === 'Weeks')  d.setDate(d.getDate() + value * 7)
-  else if (unit === 'Months') d.setMonth(d.getMonth() + value)
-  else if (unit === 'Years')  d.setFullYear(d.getFullYear() + value)
-  else d.setDate(d.getDate() + value)
-  return d
+// Whole days from now until an instant (negative = past). Pure date formatting — the
+// schedule arithmetic that produces rule.dueAt/overdueAt lives in MaintenanceRule.cs,
+// deliberately not duplicated here.
+function daysUntil(iso: string): number {
+  return Math.round((new Date(iso).getTime() - Date.now()) / 86_400_000)
 }
 
-function dueDate(rule: MaintenanceRule): Date | null {
-  if (rule.scheduleType === 'DueDate') return rule.nextDueAt ? new Date(rule.nextDueAt) : null
-  return rule.lastDoneAt ? addInterval(new Date(rule.lastDoneAt), rule.intervalValue, rule.intervalUnit) : null
-}
-
-function daysRelative(rule: MaintenanceRule): number {
-  const due = dueDate(rule)
-  if (!due) return -Infinity
-  return Math.round((due.getTime() - Date.now()) / 86_400_000)
-}
-
-// The instant the backend flags the rule Overdue: the due date plus the grace window
-// for DueDate schedules (Interval schedules have no window, so it's the due date itself).
-function overdueDate(rule: MaintenanceRule): Date | null {
-  const due = dueDate(rule)
-  if (!due) return null
-  if (rule.scheduleType === 'DueDate' && rule.dueWindowValue > 0)
-    return addInterval(due, rule.dueWindowValue, rule.dueWindowUnit)
-  return due
+// Sort key: soonest first, with "never done" rules ahead of everything. A finite
+// sentinel, not -Infinity, so two never-done rules don't compare NaN.
+function urgency(rule: MaintenanceRule): number {
+  return rule.dueAt ? daysUntil(rule.dueAt) : -1e9
 }
 
 function dueLabel(rule: MaintenanceRule): string {
-  const due = dueDate(rule)
-  if (!due) return rule.scheduleType === 'DueDate' ? 'No due date set' : 'Never done — do it now'
-  // Overdue is counted from the end of the grace window, not the due date itself.
+  if (!rule.dueAt) return rule.scheduleType === 'DueDate' ? 'No due date set' : 'Never done — do it now'
+  // Overdue is counted from the point the backend flags it, i.e. past the due day and
+  // any grace window.
   if (rule.status === 'Overdue') {
-    const over = overdueDate(rule) ?? due
-    const d = Math.max(1, Math.round((Date.now() - over.getTime()) / 86_400_000))
+    const d = Math.max(1, -daysUntil(rule.overdueAt ?? rule.dueAt))
     return `${d} day${d !== 1 ? 's' : ''} overdue`
   }
-  const d = daysRelative(rule)
+  const d = daysUntil(rule.dueAt)
   // Past the due date but still within the grace window: backend reports Due.
   if (d < 0) return 'Due now'
   if (d === 0) return 'Due today'
@@ -80,7 +62,7 @@ export default function DashboardPage() {
     ])
       .then(([eq, r, e, p, loaned, places, s]) => {
         setEquipment(Object.fromEntries(eq.map((x) => [x.id, x])))
-        setRules(r.sort((a, b) => daysRelative(a) - daysRelative(b)))
+        setRules(r.sort((a, b) => urgency(a) - urgency(b)))
         setEvents(e.slice(0, 5))
         setLowStockParts(p)
         setLoanedEquipment(loaned)
