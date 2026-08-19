@@ -40,6 +40,9 @@ services:
       - "3000:3000"
     environment:
       - API_URL=http://api:8080
+      # Serve the API's Swagger UI + OpenAPI doc on this port too, at /swagger.
+      # Set false to close it off (locally the api port above is published anyway).
+      - SWAGGER_PROXY=${SWAGGER_PROXY:-true}
       # Set this to override the base URL encoded in QR codes.
       # Useful when accessing via reverse proxy, custom DNS, or VPN.
       # Example: NEXT_PUBLIC_QR_BASE_URL=https://cmms.myhome.net

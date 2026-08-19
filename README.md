@@ -52,7 +52,9 @@ docker compose up --build
 ```
 
 - Web app: http://localhost:3000
-- API + Swagger UI: http://localhost:8080/swagger
+- API + Swagger UI: http://localhost:8080/swagger (also at http://localhost:3000/swagger,
+  proxied through the web app — that's the only route in a deployment, where the API port
+  isn't published)
 
 > **Before deploying beyond localhost:** change the default DB password in
 > `docker-compose.yml` and set `NEXT_PUBLIC_QR_BASE_URL` so QR codes encode a URL
@@ -63,6 +65,11 @@ helper scripts: build amd64 images and push them to a registry with
 `deploy/build-and-push.sh`, then run `deploy/docker-compose.nas.yml` there. Copy
 `deploy/.env.example` to `deploy/.env` and fill in the image refs, DB password and the
 documents share path.
+
+Only the web port is published there — the API and DB stay on Docker's internal network,
+with the web container proxying `/api` and `/swagger` through to the API. So the docs live
+at `http://<NAS-IP>:<WEB_PORT>/swagger`; set `SWAGGER_PROXY=false` to take them off the
+port.
 
 ## Local development
 
@@ -125,7 +132,7 @@ AppSettings:      GET/PUT /app-settings        # singleton, no /{id}
 Categories:       CRUD /categories, /part-categories, /document-categories
 ```
 
-Full details in Swagger at http://localhost:8080/swagger.
+Full details in Swagger at http://localhost:8080/swagger, or `/swagger` on the web port.
 
 ## Status & scope
 

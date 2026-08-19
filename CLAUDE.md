@@ -34,7 +34,9 @@ dotnet ef migrations add <Name> --project src/CmmsHome.Api
 dotnet ef database update --project src/CmmsHome.Api
 ```
 
-- API Swagger UI: `http://localhost:8080/swagger`
+- API Swagger UI: `http://localhost:8080/swagger`, or `http://localhost:3000/swagger`
+  (proxied through the web app — the only route in a deployment, where the API port
+  isn't published; `SWAGGER_PROXY=false` disables it)
 - Frontend: `http://localhost:3000`
 
 ## Backend Architecture (`src/CmmsHome.Api/`)
@@ -68,6 +70,10 @@ The `Dockerfile` is in `src/CmmsHome.Api/` and uses `.` (repo root) as the build
 
 Next.js 16 App Router. All pages are `'use client'` with client-side data fetching via `lib/api.ts`, which calls the relative path `/api`. A catch-all route handler (`app/api/[...path]/route.ts`) proxies that to the backend at `API_URL` (server-side env var, defaults to `http://localhost:8080`), so the same build works in the browser and in Docker without baking a host into the bundle.
 
+A second proxy (`app/swagger/[[...path]]/route.ts`) does the same for the API's Swagger
+UI + OpenAPI document, so the docs are reachable on the single published web port —
+deployments don't publish the API's port at all. See "Swagger through the web port" below.
+
 ```
 ├── lib/types.ts             # TypeScript types matching backend models exactly
 ├── lib/api.ts               # Typed fetch wrapper — all API calls go through here
@@ -80,6 +86,8 @@ Next.js 16 App Router. All pages are `'use client'` with client-side data fetchi
 └── app/
     ├── layout.tsx           # Root layout: PWA meta, BottomNav
     ├── page.tsx             # Dashboard: overdue/upcoming rules + recent events
+    ├── api/[...path]/route.ts     # proxy → API_URL, strips the /api prefix
+    ├── swagger/[[...path]]/route.ts # proxy → API_URL/swagger (SWAGGER_PROXY toggle)
     ├── labels/page.tsx      # print QR labels for equipment/places (batch or single)
     ├── equipment/[id]/
     │   ├── page.tsx         # Universal detail: info, lending, schedule, history, QR, parts, links
@@ -103,7 +111,30 @@ Next.js 16 App Router. All pages are `'use client'` with client-side data fetchi
   for a place's own heading/label, which always shows its full lineage. Pages needing either
   must load `api.storageLocations.list()` (the flat tree) alongside their own data
 - `API_URL` (server-side, read by the `/api` proxy route) defaults to `http://localhost:8080`; `NEXT_PUBLIC_QR_BASE_URL` overrides the host baked into printed QR codes when behind a reverse proxy
+- `SWAGGER_PROXY` (server-side, default on) gates the `/swagger` proxy — see below
 - `html5-qrcode` is dynamically imported in `scan/page.tsx` to avoid SSR issues
+
+### Swagger through the web port
+
+Swagger is enabled unconditionally in `Program.cs` (not gated on `IsDevelopment()`), but
+`deploy/docker-compose.nas.yml` publishes **only** the web port, and the `/api` proxy
+doesn't cover `/swagger` — so deployed, the docs had no route from the browser at all.
+`app/swagger/[[...path]]/route.ts` mirrors `/swagger/*` to the api container. Two details
+are load-bearing:
+
+- **Land the browser on `/swagger/index.html`.** Swashbuckle's `index.html` references its
+  assets and the spec *relatively* (`./swagger-ui.css`, `v1/swagger.json`), so those only
+  resolve back into the proxy from inside the `/swagger/` directory. Bare `/swagger` gets
+  its own 307 rather than forwarding the upstream 301, whose `Location` is relative.
+- **`X-Forwarded-Prefix: /api`.** The proxy sets it; a `PreSerializeFilters` hook in
+  `Program.cs` turns it into an OpenAPI `servers` entry, so "Try it out" aims at the `/api`
+  proxy instead of the web host's root (where `/equipment` is a Next.js 404). The header is
+  ignored unless it's a relative path, and absent when the API is reached directly — so a
+  direct `:8080/swagger` still emits no `servers` and works unchanged.
+
+`SWAGGER_PROXY=false` (`0`/`off`/`no` also count) makes every `/swagger` path 404. Read at
+module load, so changing it needs a container restart. It gates *discoverability*, not
+access — with no auth yet, anyone who can reach the app can already reach `/api`.
 
 ## Data Model
 

@@ -3,6 +3,7 @@ using CmmsHome.Api.Data;
 using CmmsHome.Api.Endpoints;
 using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,7 +40,18 @@ builder.Services.AddCors(opt => opt.AddDefaultPolicy(p =>
 var app = builder.Build();
 
 app.UseCors();
-app.UseSwagger();
+app.UseSwagger(o => o.PreSerializeFilters.Add((doc, req) =>
+{
+    // In deployment only the web container's port is published, and it proxies
+    // /swagger through to here (see app/swagger/[[...path]]/route.ts), setting
+    // X-Forwarded-Prefix to the prefix the API answers on from the browser's side.
+    // Without a matching `servers` entry Swagger UI would aim "Try it out" at the
+    // web host's root — where /equipment is a Next.js 404, not the API.
+    // Ignored when the API is reached directly, which needs no server override.
+    var prefix = req.Headers["X-Forwarded-Prefix"].ToString();
+    if (prefix.StartsWith('/') && !prefix.StartsWith("//"))
+        doc.Servers = [new OpenApiServer { Url = prefix.TrimEnd('/') }];
+}));
 app.UseSwaggerUI();
 
 using (var scope = app.Services.CreateScope())
