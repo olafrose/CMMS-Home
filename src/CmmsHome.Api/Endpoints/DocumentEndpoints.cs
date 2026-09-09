@@ -12,7 +12,7 @@ public static class DocumentEndpoints
     {
         var group = app.MapGroup("/documents").WithTags("Documents");
 
-        group.MapGet("/", async (string? status, Guid? equipment_id, Guid? event_id, CmmsDbContext db) =>
+        group.MapGet("/", async (string? status, Guid? equipment_id, Guid? event_id, Guid? part_id, CmmsDbContext db) =>
         {
             var q = db.Documents
                 .Include(d => d.Links)
@@ -32,6 +32,11 @@ public static class DocumentEndpoints
 
             if (event_id.HasValue)
                 q = q.Where(d => d.Links.Any(l => l.MaintenanceEventId == event_id));
+
+            // Direct part links only — a document filed against a part does not surface on
+            // the equipment PartEquipment says that part is used on. See DocumentLink.
+            if (part_id.HasValue)
+                q = q.Where(d => d.Links.Any(l => l.PartId == part_id));
 
             return Results.Ok(await q.OrderByDescending(d => d.DiscoveredAt).ToListAsync());
         });
@@ -95,12 +100,15 @@ public static class DocumentEndpoints
             for (int i = 0; i < dto.Links.Count; i++)
             {
                 var link = dto.Links[i];
-                var bothSet = link.EquipmentId.HasValue && link.MaintenanceEventId.HasValue;
-                var neitherSet = !link.EquipmentId.HasValue && !link.MaintenanceEventId.HasValue;
 
-                if (bothSet || neitherSet)
+                // Counted rather than compared pairwise: with three targets, spelling out
+                // "both set / neither set" stops scaling.
+                var targets = new[] { link.EquipmentId, link.MaintenanceEventId, link.PartId }
+                    .Count(t => t.HasValue);
+
+                if (targets != 1)
                 {
-                    errors[$"links[{i}]"] = ["Each link must have exactly one of EquipmentId or MaintenanceEventId set."];
+                    errors[$"links[{i}]"] = ["Each link must have exactly one of EquipmentId, MaintenanceEventId or PartId set."];
                     continue;
                 }
 
@@ -115,6 +123,12 @@ public static class DocumentEndpoints
                     var exists = await db.Events.AnyAsync(e => e.Id == link.MaintenanceEventId.Value);
                     if (!exists)
                         errors[$"links[{i}].maintenanceEventId"] = [$"MaintenanceEvent {link.MaintenanceEventId.Value} not found."];
+                }
+                else if (link.PartId.HasValue)
+                {
+                    var exists = await db.Parts.AnyAsync(p => p.Id == link.PartId.Value);
+                    if (!exists)
+                        errors[$"links[{i}].partId"] = [$"Part {link.PartId.Value} not found."];
                 }
             }
 
@@ -131,6 +145,7 @@ public static class DocumentEndpoints
                 DocumentId = doc.Id,
                 EquipmentId = l.EquipmentId,
                 MaintenanceEventId = l.MaintenanceEventId,
+                PartId = l.PartId,
                 LinkedAt = DateTime.UtcNow,
             }));
 
@@ -284,4 +299,4 @@ public static class DocumentEndpoints
 }
 
 record ClassifyDocumentDto(Guid? CategoryId, string? Title, List<ClassifyLinkDto> Links);
-record ClassifyLinkDto(Guid? EquipmentId, Guid? MaintenanceEventId);
+record ClassifyLinkDto(Guid? EquipmentId, Guid? MaintenanceEventId, Guid? PartId);

@@ -8,6 +8,13 @@ where the implementation diverged from the original plan, the notes below say so
 
 - **Asset → Equipment merge:** everything below that says `Asset`/`AssetId` is now
   `Equipment`/`EquipmentId`, and a document links m:n to equipment and/or events.
+- **Parts are a third link target:** `DocumentLink.PartId`, so a consumable's own
+  paperwork (filter spec sheet, oil safety data sheet, reorder confirmation) lives on
+  the part rather than on whichever appliance it happens to fit. Filter with
+  `?part_id=`; `/parts/{id}` lists them read-only, exactly as equipment does.
+  A part link is **literal** — bleed-through via `PartEquipment` (showing a filter's
+  manual on every appliance the filter fits) was considered and rejected: the equipment
+  page's list would mix direct and inherited paperwork with nothing to distinguish them.
 - **Category is a managed entity, not an enum:** `DocumentCategory { Name,
   Sensitive, Color }` (CRUD on `/document-categories`), replacing the fixed
   `Manual|Warranty|…` enum. `Sensitive` is stored but not yet enforced (waits on
@@ -79,10 +86,13 @@ Document {
 DocumentLink {            # many-to-many; flexible linking (decision B)
   Id                  UUID
   DocumentId          UUID  -> Document
-  AssetId             UUID? -> Asset
+  EquipmentId         UUID? -> Equipment          # was AssetId
   MaintenanceEventId  UUID? -> MaintenanceEvent
+  PartId              UUID? -> Part               # shipped later; see the delta list above
   LinkedAt            DateTime
-}                         # exactly one of AssetId / MaintenanceEventId is set per row
+}                         # exactly one of the three targets is set per row; each is
+                          # cascade-delete, so losing the target loses the link but not
+                          # the document
 
 DocumentMove {            # Phase 2 only — audit trail + undo
   Id          UUID
@@ -142,7 +152,7 @@ and never touching folders the user curates):
 
 ```
 GET  /documents?status=unclassified      # the inbox
-GET  /documents?asset_id= | ?event_id=    # docs linked to an entity
+GET  /documents?equipment_id= | ?event_id= | ?part_id=   # docs linked to an entity (directly)
 GET  /documents/{id}
 GET  /documents/{id}/content              # streams bytes from the share; path-traversal validated
 PUT  /documents/{id}/classify             # set link(s) + category + title → Status=Classified (+ move in Phase 2)
@@ -153,9 +163,13 @@ POST /documents/scan                       # trigger a rescan
 ## Frontend (Next.js, mobile-first)
 
 - New **`/documents` inbox** page; an **unclassified-count badge** in `BottomNav`.
-- **Documents section** on asset detail and event detail (list + preview; PDFs open in browser,
-  images thumbnail inline).
-- Classification form: pick asset/event(s), tap a category, optional title — kept quick.
+- **Documents section** on equipment, part and event detail (list + preview; PDFs open in browser,
+  images thumbnail inline). Read-only on all three — attaching happens in `/documents`.
+- Classification form: pick target(s), tap a category, optional title — kept quick. Each link
+  row is **one** `<select>` whose options are grouped `Equipment` / `Parts` and whose value
+  carries the kind (`eq:<id>` / `pt:<id>`); a separate kind toggle would have cost an extra tap
+  on a phone. Picking equipment reveals a second select to narrow to one of its maintenance
+  events; picking a part does not, since events hang off equipment only.
 
 ## Docker / deployment
 

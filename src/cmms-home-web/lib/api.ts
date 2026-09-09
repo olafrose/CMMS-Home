@@ -116,11 +116,12 @@ export const api = {
       request<void>(`/part-categories/${id}`, { method: 'DELETE' }),
   },
   documents: {
-    list: (opts?: { status?: string; equipmentId?: string; eventId?: string }) => {
+    list: (opts?: { status?: string; equipmentId?: string; eventId?: string; partId?: string }) => {
       const params = new URLSearchParams()
       if (opts?.status) params.set('status', opts.status)
       if (opts?.equipmentId) params.set('equipment_id', opts.equipmentId)
       if (opts?.eventId) params.set('event_id', opts.eventId)
+      if (opts?.partId) params.set('part_id', opts.partId)
       const qs = params.size ? `?${params}` : ''
       return request<Document[]>(`/documents${qs}`)
     },

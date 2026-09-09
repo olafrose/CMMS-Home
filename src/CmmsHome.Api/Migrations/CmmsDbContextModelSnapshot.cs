@@ -163,6 +163,9 @@ namespace CmmsHome.Api.Migrations
                     b.Property<Guid?>("MaintenanceEventId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("PartId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DocumentId");
@@ -170,6 +173,8 @@ namespace CmmsHome.Api.Migrations
                     b.HasIndex("EquipmentId");
 
                     b.HasIndex("MaintenanceEventId");
+
+                    b.HasIndex("PartId");
 
                     b.ToTable("DocumentLinks");
                 });
@@ -553,6 +558,11 @@ namespace CmmsHome.Api.Migrations
                     b.HasOne("CmmsHome.Api.Models.MaintenanceEvent", null)
                         .WithMany()
                         .HasForeignKey("MaintenanceEventId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("CmmsHome.Api.Models.Part", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
                         .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Document");

@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { DocumentPreviewButton } from '@/components/DocumentPreview'
 import EntityCombobox from '@/components/EntityCombobox'
 import { categoryBadgeStyle } from '@/lib/documents'
-import type { Equipment, Document, DocumentCategory, DocumentStatus, MaintenanceEvent } from '@/lib/types'
+import type { Equipment, Document, DocumentCategory, DocumentStatus, MaintenanceEvent, Part } from '@/lib/types'
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'Unclassified', label: 'Unclassified' },
@@ -37,35 +37,49 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// `target` carries its kind in the value — `eq:<id>` or `pt:<id>` — so one select covers
+// equipment and parts. A separate kind toggle would cost an extra tap on a phone, and the
+// two id spaces can't be told apart from the value alone.
+const EQUIPMENT_PREFIX = 'eq:'
+const PART_PREFIX = 'pt:'
+
 interface LinkRow {
-  equipmentId: string
+  target: string
   eventId: string
   events: MaintenanceEvent[]
   loadingEvents: boolean
 }
 
+// A factory, not a shared constant: rows are only ever replaced immutably today, but one
+// shared object (and one shared `events` array) across every row is a trap worth not setting.
+const emptyRow = (): LinkRow => ({ target: '', eventId: '', events: [], loadingEvents: false })
+
 interface ClassifyFormProps {
   doc: Document
   equipment: Equipment[]
+  parts: Part[]
   categories: DocumentCategory[]
   onClassified: (doc: Document) => void
   onCancel: () => void
 }
 
-function ClassifyForm({ doc, equipment, categories, onClassified, onCancel }: ClassifyFormProps) {
+function ClassifyForm({ doc, equipment, parts, categories, onClassified, onCancel }: ClassifyFormProps) {
   const [cats, setCats] = useState<DocumentCategory[]>(categories)
   const [categoryId, setCategoryId] = useState<string | null>(doc.categoryId ?? null)
   const [title, setTitle] = useState(doc.title ?? '')
-  const [linkRows, setLinkRows] = useState<LinkRow[]>([{ equipmentId: '', eventId: '', events: [], loadingEvents: false }])
+  const [linkRows, setLinkRows] = useState<LinkRow[]>([emptyRow()])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  async function loadEventsForRow(index: number, equipmentId: string) {
+  async function pickTarget(index: number, target: string) {
+    // Only equipment has maintenance events to narrow to, so a part (or a cleared row)
+    // drops the event select and whatever was loaded into it.
+    const equipmentId = target.startsWith(EQUIPMENT_PREFIX) ? target.slice(EQUIPMENT_PREFIX.length) : ''
     if (!equipmentId) {
-      setLinkRows(prev => prev.map((r, i) => i === index ? { ...r, equipmentId, eventId: '', events: [], loadingEvents: false } : r))
+      setLinkRows(prev => prev.map((r, i) => i === index ? { ...r, target, eventId: '', events: [], loadingEvents: false } : r))
       return
     }
-    setLinkRows(prev => prev.map((r, i) => i === index ? { ...r, equipmentId, eventId: '', loadingEvents: true } : r))
+    setLinkRows(prev => prev.map((r, i) => i === index ? { ...r, target, eventId: '', loadingEvents: true } : r))
     try {
       const events = await api.events.list(equipmentId)
       setLinkRows(prev => prev.map((r, i) => i === index ? { ...r, events, loadingEvents: false } : r))
@@ -75,7 +89,7 @@ function ClassifyForm({ doc, equipment, categories, onClassified, onCancel }: Cl
   }
 
   function addRow() {
-    setLinkRows(prev => [...prev, { equipmentId: '', eventId: '', events: [], loadingEvents: false }])
+    setLinkRows(prev => [...prev, emptyRow()])
   }
 
   function removeRow(index: number) {
@@ -84,9 +98,9 @@ function ClassifyForm({ doc, equipment, categories, onClassified, onCancel }: Cl
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const validLinks = linkRows.filter(r => r.equipmentId)
+    const validLinks = linkRows.filter(r => r.target)
     if (validLinks.length === 0) {
-      setError('Add at least one equipment link.')
+      setError('Add at least one link.')
       return
     }
     setSaving(true)
@@ -95,10 +109,13 @@ function ClassifyForm({ doc, equipment, categories, onClassified, onCancel }: Cl
       const updated = await api.documents.classify(doc.id, {
         categoryId: categoryId || undefined,
         title: title.trim() || undefined,
-        // Each link is exactly one target: the event if one was picked, else the equipment.
-        links: validLinks.map(r => r.eventId
-          ? { maintenanceEventId: r.eventId }
-          : { equipmentId: r.equipmentId }),
+        // Each link is exactly one target: a part, or — for equipment — the event if one
+        // was picked, else the equipment itself.
+        links: validLinks.map(r => {
+          if (r.target.startsWith(PART_PREFIX)) return { partId: r.target.slice(PART_PREFIX.length) }
+          const equipmentId = r.target.slice(EQUIPMENT_PREFIX.length)
+          return r.eventId ? { maintenanceEventId: r.eventId } : { equipmentId }
+        }),
       })
       onClassified(updated)
     } catch {
@@ -130,14 +147,23 @@ function ClassifyForm({ doc, equipment, categories, onClassified, onCancel }: Cl
             <div key={i} className="flex gap-2 items-start">
               <div className="flex-1 space-y-1.5">
                 <select
-                  value={row.equipmentId}
-                  onChange={e => loadEventsForRow(i, e.target.value)}
+                  value={row.target}
+                  onChange={e => pickTarget(i, e.target.value)}
                   className="field w-full text-sm"
                 >
-                  <option value="">-- pick equipment --</option>
-                  {equipment.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  <option value="">-- pick equipment or part --</option>
+                  {equipment.length > 0 && (
+                    <optgroup label="Equipment">
+                      {equipment.map(a => <option key={a.id} value={`${EQUIPMENT_PREFIX}${a.id}`}>{a.name}</option>)}
+                    </optgroup>
+                  )}
+                  {parts.length > 0 && (
+                    <optgroup label="Parts">
+                      {parts.map(p => <option key={p.id} value={`${PART_PREFIX}${p.id}`}>{p.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
-                {row.equipmentId && (
+                {row.target.startsWith(EQUIPMENT_PREFIX) && (
                   <select
                     value={row.eventId}
                     onChange={e => setLinkRows(prev => prev.map((r, idx) => idx === i ? { ...r, eventId: e.target.value } : r))}
@@ -179,12 +205,13 @@ function ClassifyForm({ doc, equipment, categories, onClassified, onCancel }: Cl
 interface DocCardProps {
   doc: Document
   equipment: Equipment[]
+  parts: Part[]
   categories: DocumentCategory[]
   onRemove: (id: string) => void
   onUpdate: (doc: Document) => void
 }
 
-function DocCard({ doc, equipment, categories, onRemove, onUpdate }: DocCardProps) {
+function DocCard({ doc, equipment, parts, categories, onRemove, onUpdate }: DocCardProps) {
   const [classifying, setClassifying] = useState(false)
   const [ignoring, setIgnoring] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -299,6 +326,7 @@ function DocCard({ doc, equipment, categories, onRemove, onUpdate }: DocCardProp
         <ClassifyForm
           doc={doc}
           equipment={equipment}
+          parts={parts}
           categories={categories}
           onClassified={(updated) => { onUpdate(updated); setClassifying(false) }}
           onCancel={() => setClassifying(false)}
@@ -311,6 +339,7 @@ function DocCard({ doc, equipment, categories, onRemove, onUpdate }: DocCardProp
 export default function DocumentsPage() {
   const [docs, setDocs] = useState<Document[]>([])
   const [equipment, setEquipment] = useState<Equipment[]>([])
+  const [parts, setParts] = useState<Part[]>([])
   const [categories, setCategories] = useState<DocumentCategory[]>([])
   const [statusFilter, setStatusFilter] = useState('Unclassified')
   const [loading, setLoading] = useState(true)
@@ -331,6 +360,9 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     api.equipment.list().then(setEquipment).catch(() => {})
+    // Separately caught: losing parts leaves the classify picker with its Equipment half
+    // rather than no picker at all.
+    api.parts.list().then(setParts).catch(() => {})
     api.documentCategories.list().then(setCategories).catch(() => {})
     loadDocs(statusFilter)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -504,6 +536,7 @@ export default function DocumentsPage() {
                 key={doc.id}
                 doc={doc}
                 equipment={equipment}
+                parts={parts}
                 categories={categories}
                 onRemove={handleRemove}
                 onUpdate={handleUpdate}

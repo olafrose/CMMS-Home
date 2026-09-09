@@ -181,7 +181,7 @@ Categories:  CRUD /categories
 Parts:       POST/GET /parts (?equipment_id=, ?location_id=, ?low_stock=)  |  GET/PUT/DELETE /parts/{id}
 PartUsages:  POST/GET /part-usages  |  DELETE /part-usages/{id}
 PartCategories: CRUD /part-categories
-Documents:   GET /documents (?status=, ?equipment_id=, ?event_id=)  |  GET /documents/{id}[/content]
+Documents:   GET /documents (?status=, ?equipment_id=, ?event_id=, ?part_id=)  |  GET /documents/{id}[/content]
              |  POST /documents/upload (multipart)  |  PUT /documents/{id}/classify  |  POST /documents/{id}/ignore
              |  POST /documents/scan  |  DELETE /documents/{id}  |  POST /documents/prune-missing
 DocumentCategories: CRUD /document-categories
@@ -192,12 +192,22 @@ AppSettings: GET/PUT /app-settings          # singleton — no /{id}; PUT also r
 ## Documents
 
 Indexes files from a watched folder (`Documents__RootPath`, a NAS/SMB share) and
-links them to equipment/events. Metadata only lives in Postgres; the files are the
+links them to equipment, events or parts. Metadata only lives in Postgres; the files are the
 NAS's domain. `DocumentScanner` (background + on-demand `/scan`) discovers files by
 `RelativePath`, dedupes/re-links by SHA-256 `ContentHash`, and marks vanished files
 `Missing` (never auto-deleted). `GET /documents/{id}/content` streams bytes back
 (inline; path-traversal guarded). Frontend renders PDFs/Word/Excel client-side to
 bypass browser download settings (`PdfViewer`/`OfficeViewer`, `DocumentPreview`).
+
+`DocumentLink` is the join: nullable `EquipmentId` / `MaintenanceEventId` / `PartId`,
+**exactly one** set per row, cascade-deleted with whichever target it names (the document
+itself survives, classified but unlinked). Parts are a target because a consumable's own
+paperwork — filter spec sheet, oil safety data sheet, reorder confirmation — belongs to
+the part, not to whichever appliance it happens to fit. A part link stays **literal**: it
+does *not* surface on the equipment `PartEquipment` says the part is used on, because an
+equipment's document list would then silently mix direct and inherited paperwork with no
+way to tell them apart. Validation counts the set targets rather than comparing them
+pairwise — "both set / neither set" stopped scaling at three.
 
 `DocumentCategory` is a managed entity (`Name`, `Sensitive`, `Color`); `Sensitive`
 is stored but unenforced until auth exists.

@@ -182,11 +182,14 @@ export interface DocumentCategory {
   color?: string
 }
 
+// What a document is filed against — exactly one of the three is set. A part link is
+// literal: it does not surface on the equipment that part is used on.
 export interface DocumentLink {
   id: string
   documentId: string
   equipmentId: string | null
   maintenanceEventId: string | null
+  partId: string | null
   linkedAt: string
 }
 
@@ -210,7 +213,7 @@ export interface Document {
 export interface ClassifyDocumentDto {
   categoryId?: string
   title?: string
-  links: { equipmentId?: string; maintenanceEventId?: string }[]
+  links: { equipmentId?: string; maintenanceEventId?: string; partId?: string }[]
 }
 
 // A user-entered web link attached to one Equipment or one Part.

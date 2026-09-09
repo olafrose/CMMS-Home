@@ -160,7 +160,9 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .HasForeignKey(d => d.CategoryId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // A document link points at one Equipment or one MaintenanceEvent.
+        // A document link points at one Equipment, one MaintenanceEvent, or one Part.
+        // Deleting the target takes the link with it — the document itself survives,
+        // classified but unlinked.
         modelBuilder.Entity<DocumentLink>()
             .HasOne<Equipment>()
             .WithMany()
@@ -171,6 +173,12 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .HasOne<MaintenanceEvent>()
             .WithMany()
             .HasForeignKey(l => l.MaintenanceEventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DocumentLink>()
+            .HasOne<Part>()
+            .WithMany()
+            .HasForeignKey(l => l.PartId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // Managed-foldering move audit (Phase 2).

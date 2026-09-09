@@ -9,7 +9,8 @@ import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
 import { locationPath } from '@/lib/storage'
 import ExternalLinkList from '@/components/ExternalLinkList'
-import type { Equipment, Part, PartCategory, PartUsage, StorageLocation } from '@/lib/types'
+import { DocumentPreviewButton } from '@/components/DocumentPreview'
+import type { Document, Equipment, Part, PartCategory, PartUsage, StorageLocation } from '@/lib/types'
 
 const UNIT_SUGGESTIONS = ['each', 'L', 'mL', 'kg', 'g', 'm', 'cm', 'pack']
 
@@ -33,6 +34,7 @@ export default function PartDetailPage() {
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [partCategories, setPartCategories] = useState<PartCategory[]>([])
   const [locations, setLocations] = useState<StorageLocation[]>([])
+  const [documents, setDocuments] = useState<Document[]>([])
   const [saving, setSaving] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
 
@@ -47,6 +49,9 @@ export default function PartDetailPage() {
         setStorageLocationId(p.storageLocationId ?? null)
       })
       .finally(() => setLoading(false))
+    // Its own request, not part of the Promise.all: documents are supplementary, so a
+    // failure here must not blank the part page.
+    api.documents.list({ partId: id }).then(setDocuments).catch(() => {})
   }, [id])
 
   async function handleSave() {
@@ -212,6 +217,26 @@ export default function PartDetailPage() {
 
       {/* External links (spec sheet, reorder page) */}
       <ExternalLinkList partId={id} />
+
+      {/* Documents filed against this part (spec sheet, safety data sheet, order
+          confirmation). Attached from /documents — same read-only shape as equipment. */}
+      {documents.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Documents ({documents.length})</h2>
+          <ul className="space-y-2">
+            {documents.map((d) => (
+              <li key={d.id} className={`flex items-center gap-3 ${card} px-4 py-3`}>
+                <span className="text-lg leading-none">📄</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{d.title ?? d.fileName}</p>
+                  {d.category && <p className="text-xs text-slate-400 dark:text-slate-500">{d.category.name}</p>}
+                </div>
+                <DocumentPreviewButton doc={d} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Usage history */}
       <section>
