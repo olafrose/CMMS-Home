@@ -35,6 +35,15 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
+# The Visual Studio build-output patterns above are unanchored, so they match a
+# directory of that name at ANY depth — including Next.js route folders. That is
+# not hypothetical: app/equipment/[id]/log/ was silently untracked from the
+# Asset/Tool merge (b9c23a1) onwards, so the "+ Log Maintenance" button and every
+# printed QR label 404'd on any fresh clone or container build while still working
+# on the author's machine. Route source is never build output.
+!src/cmms-home-web/app/**/[Ll]og/
+!src/cmms-home-web/app/**/[Ll]ogs/
+
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 # Uncomment if you have tasks that create the project's static files in wwwroot
