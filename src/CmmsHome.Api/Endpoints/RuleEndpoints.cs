@@ -11,30 +11,33 @@ public static class RuleEndpoints
     {
         var group = app.MapGroup("/rules").WithTags("Rules");
 
-        group.MapGet("/", async (Guid? equipment_id, CmmsDbContext db, ActorAccessor accessor) =>
+        group.MapGet("/", async (Guid? equipment_id, Guid? storage_location_id, CmmsDbContext db, ActorAccessor accessor) =>
         {
             var actor = await accessor.GetAsync();
 
             // As on /events: a scanned label sees its own item's schedules, and cannot drop
             // the filter to enumerate everything that is due in the house.
-            if (actor.IsLabelScoped && equipment_id != actor.ScopedEquipmentId)
+            if (!actor.MayTouchTarget(equipment_id, storage_location_id))
                 return LabelScope.Denied();
 
             var query = db.Rules.AsQueryable();
             if (equipment_id.HasValue)
                 query = query.Where(r => r.EquipmentId == equipment_id.Value);
+            if (storage_location_id.HasValue)
+                query = query.Where(r => r.StorageLocationId == storage_location_id.Value);
             return Results.Ok(await query.ToListAsync());
         }).RequirePermission(Permissions.RulesRead).AllowLabelScope();
 
         group.MapPost("/", async (CreateRuleDto dto, CmmsDbContext db) =>
         {
-            if (!await db.Equipment.AnyAsync(e => e.Id == dto.EquipmentId))
-                return Results.NotFound();
+            if (await MaintenanceTarget.ValidateAsync(dto.EquipmentId, dto.StorageLocationId, db) is { } invalid)
+                return invalid;
 
             var rule = new MaintenanceRule
             {
                 Id = Guid.NewGuid(),
                 EquipmentId = dto.EquipmentId,
+                StorageLocationId = dto.StorageLocationId,
                 Name = dto.Name,
                 ScheduleType = dto.ScheduleType,
                 IntervalValue = dto.IntervalValue,
@@ -82,7 +85,7 @@ public static class RuleEndpoints
 }
 
 record CreateRuleDto(
-    Guid EquipmentId, string? Name, ScheduleType ScheduleType,
+    Guid? EquipmentId, Guid? StorageLocationId, string? Name, ScheduleType ScheduleType,
     int IntervalValue, IntervalUnit IntervalUnit, DateTime? LastDoneAt,
     DateTime? NextDueAt, int DueWindowValue, IntervalUnit DueWindowUnit,
     int ReminderLeadValue, IntervalUnit ReminderLeadUnit);

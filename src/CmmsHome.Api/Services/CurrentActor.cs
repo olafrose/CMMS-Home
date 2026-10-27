@@ -20,13 +20,15 @@ public class CurrentActor
     // Set when the caller arrived by scanning a printed label rather than signing in. The
     // grid says *what* an anonymous subject may do; this says *which* item they may do it
     // to. Both must agree, which is what stops a single label becoming a key to everything.
+    // At most one of the two is set: a label names either an item or a place.
     public Guid? ScopedEquipmentId { get; init; }
+    public Guid? ScopedStorageLocationId { get; init; }
 
     // True when no accounts exist yet, so the app is in first-run setup.
     public bool SetupRequired { get; init; }
 
     public bool IsAuthenticated => User is not null;
-    public bool IsLabelScoped => ScopedEquipmentId is not null;
+    public bool IsLabelScoped => ScopedEquipmentId is not null || ScopedStorageLocationId is not null;
 
     public bool Can(string permission) => Permissions.Contains(permission);
 
@@ -34,6 +36,12 @@ public class CurrentActor
     // users are unscoped and may touch whatever their permissions allow.
     public bool MayTouchEquipment(Guid equipmentId) =>
         !IsLabelScoped || ScopedEquipmentId == equipmentId;
+
+    // The same, for anything that targets either an item or a place (events, rules). Both
+    // halves must match, so an item's label can't reach a place and vice versa — and passing
+    // two nulls (an unfiltered list) is refused for a scoped caller.
+    public bool MayTouchTarget(Guid? equipmentId, Guid? storageLocationId) =>
+        !IsLabelScoped || (equipmentId == ScopedEquipmentId && storageLocationId == ScopedStorageLocationId);
 
     public static readonly CurrentActor None = new();
 }
@@ -92,7 +100,8 @@ public class ActorAccessor(IHttpContextAccessor http, CmmsDbContext db, LabelSig
             }
         }
 
-        // Not signed in: the Anonymous role, optionally narrowed to one item by a label token.
+        // Not signed in: the Anonymous role, optionally narrowed to one target by a label token.
+        var scope = await labels.TryReadLabelSessionAsync(ctx.Request.Cookies[AuthCookies.LabelSession]);
         var anonRoleId = await db.Roles.Where(r => r.IsAnonymous).Select(r => r.Id).SingleOrDefaultAsync();
 
         return _resolved = new CurrentActor
@@ -100,7 +109,8 @@ public class ActorAccessor(IHttpContextAccessor http, CmmsDbContext db, LabelSig
             Permissions = anonRoleId == Guid.Empty
                 ? new HashSet<string>()
                 : await PermissionsForRolesAsync([anonRoleId]),
-            ScopedEquipmentId = await labels.TryReadLabelSessionAsync(ctx.Request.Cookies[AuthCookies.LabelSession]),
+            ScopedEquipmentId = scope is { Kind: LabelTargetKind.Equipment } ? scope.Value.Id : null,
+            ScopedStorageLocationId = scope is { Kind: LabelTargetKind.StorageLocation } ? scope.Value.Id : null,
             SetupRequired = setupRequired,
         };
     }

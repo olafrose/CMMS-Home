@@ -37,9 +37,13 @@ export default function ScanPage() {
 
   function handleDecoded(decoded: string) {
     // Honor what the QR encodes: an asset QR (/equipment/{id}) opens the asset page,
-    // a maintenance QR (/equipment/{id}/log) opens the quick-log. Legacy /assets/…
-    // and typed /storage/{box|shelf}/… QRs still resolve.
+    // a maintenance QR (/equipment/{id}/log or /storage/{id}/log) opens the quick-log.
+    // Legacy /assets/… and typed /storage/{box|shelf}/… QRs still resolve.
     const isLog = /\/log(?:[/?#]|$)/i.test(decoded)
+    // Carry the query across: it holds the label's `?t=` token, and dropping it left an
+    // in-app scan without an account unable to save — the phone's own camera app kept it.
+    let query = ''
+    try { query = new URL(decoded).search } catch { /* not a URL — a bare id, handled below */ }
     const equipment = decoded.match(/\/equipment\/([0-9a-f-]{36})/i)
     const asset = decoded.match(/\/assets\/([0-9a-f-]{36})/i)
     const storageTyped = decoded.match(/\/storage\/(?:box|shelf)\/([0-9a-f-]{36})/i)
@@ -47,9 +51,9 @@ export default function ScanPage() {
     const equipmentId = equipment?.[1] ?? asset?.[1]
     const storageId = storageTyped?.[1] ?? storagePlain?.[1]
     if (equipmentId) {
-      router.push(isLog ? `/equipment/${equipmentId}/log` : `/equipment/${equipmentId}`)
+      router.push((isLog ? `/equipment/${equipmentId}/log` : `/equipment/${equipmentId}`) + query)
     } else if (storageId) {
-      router.push(`/storage/${storageId}`)
+      router.push((isLog ? `/storage/${storageId}/log` : `/storage/${storageId}`) + query)
     } else if (/^[0-9a-f-]{36}$/i.test(decoded)) {
       router.push(`/equipment/${decoded}`)
     } else {

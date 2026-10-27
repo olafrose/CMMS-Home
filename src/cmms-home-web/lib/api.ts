@@ -3,8 +3,9 @@ import type {
   StorageLocationContents, Document, DocumentCategory, ClassifyDocumentDto,
   CreateEquipmentDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
   AppSettings, SaveAppSettingsResult, ExternalLink,
-  Me, User, SaveUserDto, AccessGrid, AuthSession,
+  Me, User, SaveUserDto, AccessGrid, AuthSession, MaintenanceTarget,
 } from './types'
+import { targetFields, targetQuery } from './maintenance'
 
 const API_BASE = '/api'
 
@@ -96,8 +97,8 @@ export const api = {
       request<Equipment>(`/equipment/${id}/return`, { method: 'POST' }),
   },
   events: {
-    list: (equipmentId?: string) =>
-      request<MaintenanceEvent[]>(`/events${equipmentId ? `?equipment_id=${equipmentId}` : ''}`),
+    list: (target?: MaintenanceTarget) =>
+      request<MaintenanceEvent[]>(`/events${targetQuery(target)}`),
     get: (id: string) => request<MaintenanceEvent>(`/events/${id}`),
     create: (dto: CreateEventDto) =>
       request<MaintenanceEvent>('/events', { method: 'POST', body: JSON.stringify(dto) }),
@@ -105,8 +106,8 @@ export const api = {
       request<MaintenanceEvent>(`/events/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
   },
   rules: {
-    list: (equipmentId?: string) =>
-      request<MaintenanceRule[]>(`/rules${equipmentId ? `?equipment_id=${equipmentId}` : ''}`),
+    list: (target?: MaintenanceTarget) =>
+      request<MaintenanceRule[]>(`/rules${targetQuery(target)}`),
     create: (dto: CreateRuleDto) =>
       request<MaintenanceRule>('/rules', { method: 'POST', body: JSON.stringify(dto) }),
     update: (id: string, dto: UpdateRuleDto) =>
@@ -252,16 +253,21 @@ export const api = {
     changePassword: (currentPassword: string, newPassword: string) =>
       request<void>('/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
     /**
-     * Trades a printed label's `?t=` token for a short-lived scope covering that one item,
-     * so an anonymous scan can log maintenance without being able to browse anything else.
+     * Trades a printed label's `?t=` token for a short-lived scope covering that one item
+     * or place, so an anonymous scan can log maintenance without being able to browse
+     * anything else.
      */
-    labelSession: (equipmentId: string, token: string) =>
-      request<{ equipmentId: string; expiresInSeconds: number }>(
-        '/auth/label-session', { method: 'POST', body: JSON.stringify({ equipmentId, token }) }),
+    labelSession: (target: MaintenanceTarget, token: string) =>
+      request<{ equipmentId: string | null; storageLocationId: string | null; expiresInSeconds: number }>(
+        '/auth/label-session', { method: 'POST', body: JSON.stringify({ ...targetFields(target), token }) }),
     /** equipmentId -> token, for embedding in QR codes when printing. */
     labelTokens: (equipmentId?: string) =>
       request<Record<string, string>>(
         `/auth/label-tokens${equipmentId ? `?equipment_id=${equipmentId}` : ''}`),
+    /** placeId -> token, the same for place labels. */
+    locationLabelTokens: (storageLocationId?: string) =>
+      request<Record<string, string>>(
+        `/auth/location-label-tokens${storageLocationId ? `?storage_location_id=${storageLocationId}` : ''}`),
     /** Invalidates every label already printed. */
     rotateLabelKey: () =>
       request<{ rotated: boolean; message: string }>('/auth/label-key/rotate', { method: 'POST' }),

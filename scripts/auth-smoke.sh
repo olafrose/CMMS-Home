@@ -280,6 +280,74 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------
+section "places as maintenance targets"
+# A place's label is scoped exactly like an item's: that one place, nothing else — not even
+# the equipment stored in it. Uses an existing place, as above uses existing equipment, so the
+# run leaves one smoke-test event behind rather than an undeletable place.
+place_id=$(body GET /storage-locations admin | node -e '
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+    try { const a=JSON.parse(s); console.log(a.length?a[0].id:"") } catch { console.log("") }})')
+
+if [ -z "$place_id" ]; then
+  SKIP=$((SKIP + 1))
+  echo "  skipped: no places in this database to scan"
+else
+  ptoken=$(body GET "/auth/location-label-tokens?storage_location_id=$place_id" admin | node -e '
+    let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+      try { console.log(Object.values(JSON.parse(s))[0] ?? "") } catch { console.log("") }})')
+  expect "a place token was issued" "true" "$([ -n "$ptoken" ] && echo true || echo false)"
+
+  # Tokens are signed per kind: a place's token presented as an item's must not verify.
+  expect "place token refused as an equipment token" "401" \
+    "$(status POST /auth/label-session crosskind "{\"equipmentId\":\"$place_id\",\"token\":\"$ptoken\"}")"
+  expect "label session naming both targets" "400" \
+    "$(status POST /auth/label-session both "{\"equipmentId\":\"$place_id\",\"storageLocationId\":\"$place_id\",\"token\":\"$ptoken\"}")"
+
+  expect "valid place token opens a label session" "200" \
+    "$(status POST /auth/label-session plabel "{\"storageLocationId\":\"$place_id\",\"token\":\"$ptoken\"}")"
+  expect "place-labelled anon GET /rules?storage_location_id" "200" \
+    "$(status GET "/rules?storage_location_id=$place_id" plabel)"
+  expect "place-labelled anon GET /events?storage_location_id" "200" \
+    "$(status GET "/events?storage_location_id=$place_id" plabel)"
+  expect "place-labelled anon POST /events on the place" "201" \
+    "$(status POST /events plabel "{\"storageLocationId\":\"$place_id\",\"type\":\"cleaning\",\"note\":\"auth smoke test\"}")"
+
+  expect_one_of "place-labelled anon GET /storage-locations" "401 403" "$(status GET /storage-locations plabel)"
+  expect_one_of "place-labelled anon GET /events (unfiltered)" "401 403" "$(status GET /events plabel)"
+  if [ -n "${eq_id:-}" ]; then
+    expect "place scope cannot log on equipment" "403" \
+      "$(status POST /events plabel "{\"equipmentId\":\"$eq_id\",\"type\":\"maintenance\"}")"
+    expect "place scope cannot read equipment" "403" "$(status GET "/equipment/$eq_id" plabel)"
+    # And the reverse: an item's scope (the jar from above, re-issued after the rotation)
+    # cannot reach a place.
+    etoken=$(body GET "/auth/label-tokens?equipment_id=$eq_id" admin | node -e '
+      let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+        try { console.log(Object.values(JSON.parse(s))[0] ?? "") } catch { console.log("") }})')
+    status POST /auth/label-session elabel "{\"equipmentId\":\"$eq_id\",\"token\":\"$etoken\"}" > /dev/null
+    expect "equipment scope cannot log on a place" "403" \
+      "$(status POST /events elabel "{\"storageLocationId\":\"$place_id\",\"type\":\"maintenance\"}")"
+  fi
+
+  # Exactly one target, for signed-in callers too.
+  expect "event naming both targets" "400" \
+    "$(status POST /events admin "{\"equipmentId\":\"${eq_id:-$place_id}\",\"storageLocationId\":\"$place_id\",\"type\":\"maintenance\"}")"
+  expect "event naming no target" "400" "$(status POST /events admin '{"type":"maintenance"}')"
+
+  # History pins a place: deleting it is refused rather than cascading.
+  expect "delete a place with logged history" "400" "$(status DELETE "/storage-locations/$place_id" admin)"
+
+  # A schedule is in the way only until it is deleted. A throwaway place, so this is undone.
+  tmp_place=$(body POST /storage-locations admin '{"name":"auth smoke place"}' | jq_r id)
+  tmp_rule=$(body POST /rules admin \
+    "{\"storageLocationId\":\"$tmp_place\",\"scheduleType\":\"Interval\",\"intervalValue\":3,\"intervalUnit\":\"Months\",\"dueWindowValue\":0,\"dueWindowUnit\":\"Days\",\"reminderLeadValue\":30,\"reminderLeadUnit\":\"Days\"}" \
+    | jq_r id)
+  expect "a schedule on a place was created" "true" "$([ -n "$tmp_rule" ] && echo true || echo false)"
+  expect "delete a place with a schedule" "400" "$(status DELETE "/storage-locations/$tmp_place" admin)"
+  expect "delete that schedule" "204" "$(status DELETE "/rules/$tmp_rule" admin)"
+  expect "then the place deletes" "204" "$(status DELETE "/storage-locations/$tmp_place" admin)"
+fi
+
+# ---------------------------------------------------------------------------------------
 section "attribution"
 # A signed-in user's events are attributed; an anonymous label scan's are not. Both matter:
 # the first is the point of the feature, the second is why the column has to stay nullable.

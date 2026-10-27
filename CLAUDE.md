@@ -161,8 +161,8 @@ Equipment           { Id UUID, Name*, Kind(Asset|Tool|Both), CategoryId?→Categ
                       ImageUrl?, Notes?, PurchasedAt?, WarrantyMonths?, WarrantyUntil?, CreatedAt }
 EquipmentUsedOn     { EquipmentId, UsedOnEquipmentId }        # m:n self-link — assets a tool is used on
 EquipmentLoan       { Id, EquipmentId, Borrower*, LoanedAt (default now()), ReturnedAt? }
-MaintenanceEvent    { Id, EquipmentId, Type(maintenance|repair|cleaning|replacement), Note?, PhotoUrl?, CreatedAt }
-MaintenanceRule     { Id, EquipmentId, Name?, ScheduleType(Interval|DueDate),
+MaintenanceEvent    { Id, EquipmentId? | StorageLocationId?, Type(maintenance|repair|cleaning|replacement), Note?, PhotoUrl?, CreatedAt }
+MaintenanceRule     { Id, EquipmentId? | StorageLocationId?, Name?, ScheduleType(Interval|DueDate),
                       IntervalValue, IntervalUnit(Days|Weeks|Months|Years), LastDoneAt?,
                       NextDueAt?, DueWindowValue, DueWindowUnit, ReminderLeadValue, ReminderLeadUnit }
 ExternalLink        { Id, Url*, Label*, EquipmentId? | PartId?, CreatedAt }   # user-entered web link
@@ -234,8 +234,8 @@ seeded row sets them all, and a DB default on `PathShorteningMode` would misfire
 ```
 Equipment:   POST/GET /equipment (?kind=asset|tool, ?location_id=, ?on_loan=, ?maintained=)
              |  GET/PUT/DELETE /equipment/{id}  |  POST /equipment/{id}/checkout, /equipment/{id}/return
-Events:      POST /events  |  GET /events?equipment_id=  |  GET/PUT /events/{id}
-Rules:       POST /rules  |  GET /rules?equipment_id=  |  PUT/DELETE /rules/{id}
+Events:      POST /events  |  GET /events (?equipment_id=, ?storage_location_id=)  |  GET/PUT /events/{id}
+Rules:       POST /rules  |  GET /rules (?equipment_id=, ?storage_location_id=)  |  PUT/DELETE /rules/{id}
 StorageLocations: CRUD /storage-locations (?parent_id=, ?q=)  |  GET /storage-locations/{id}/contents
 Categories:  CRUD /categories
 Parts:       POST/GET /parts (?equipment_id=, ?location_id=, ?low_stock=)  |  GET/PUT/DELETE /parts/{id}
@@ -249,6 +249,7 @@ ExternalLinks: POST/GET /external-links (?equipment_id=, ?part_id=)  |  PUT/DELE
 AppSettings: GET/PUT /app-settings          # singleton — no /{id}; PUT also returns placesOverNewDepthCap
 Auth:        GET /auth/me  |  POST /auth/login, /auth/logout, /auth/setup, /auth/password
              |  POST /auth/label-session  |  GET /auth/label-tokens (?equipment_id=)
+             |  GET /auth/location-label-tokens (?storage_location_id=)
              |  POST /auth/label-key/rotate  |  GET /auth/sessions  |  DELETE /auth/sessions/{id}
 Users:       CRUD /users
 Roles:       CRUD /roles  |  PUT /roles/permissions   # the whole grid, roleId -> permission keys
@@ -339,6 +340,29 @@ Every `Equipment` and `Part` references a single
   to `/storage/{id}` via `next.config.ts`. `/locations` redirects to `/storage`.
 - The tree's indent caps at `INDENT_MAX_LEVELS` (`app/storage/page.tsx`) so a deep tree
   doesn't push rows off a phone screen; the expand arrows still convey structure.
+
+### Places as maintenance targets
+
+A `MaintenanceEvent` or `MaintenanceRule` targets **exactly one** `Equipment` **or** one
+`StorageLocation` — for things that *are* places (a room repainted, gutters cleaned), which
+users otherwise faked as an Equipment row stored there. Enforced by a DB check constraint
+(`num_nonnulls(...) = 1`, the only one in the schema) plus `Endpoints/MaintenanceTarget.cs`
+for a readable 400. Logging an event advances Interval rules on the **same** target.
+
+- **Literal, not rolled up.** A place's history is what was logged on the place, never the
+  events of what is stored in it — same reasoning as part documents. A subtree roll-up is
+  deferred to the planned analytics feature.
+- **Deleting a place with history is refused**, not cascaded (FKs are `Restrict`, unlike
+  Equipment's `Cascade`): tidying the storage tree must not take years of history with it.
+  Schedules just need deleting first; events can't be deleted, so a place with events stays.
+- Labels: a place token signs `location:{id}` and scopes a scan to that one place (not its
+  contents). Only the place label's log QR (`/storage/{id}/log`) carries it — see
+  `docs/authentication.md`.
+- Frontend: a target is `MaintenanceTarget = { kind: 'equipment' | 'place', id }`, converted
+  by `lib/maintenance.ts` (`targetFields`/`targetQuery`/`targetHref`/`eventHref`). The log form,
+  schedule and history are shared components (`LogEventForm`, `MaintenanceSchedule`,
+  `MaintenanceHistory`) used by both `/equipment/{id}` and `/storage/{id}`. The legacy
+  `/storage/:type/:id` redirect is narrowed to `box|shelf` so it doesn't eat `/storage/{id}/log`.
 
 ### Equipment merge (Asset + Tool)
 

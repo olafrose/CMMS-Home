@@ -21,7 +21,7 @@ interface LabelItem {
   lines: string[] // location detail, location first
   caption: string
   qrUrl: string
-  /** Optional maintenance quick-log target (equipment only), for the secondary QR. */
+  /** Maintenance quick-log target, for the secondary QR. */
   maintenanceUrl?: string
 }
 
@@ -73,6 +73,7 @@ export default function LabelsPage() {
   const [places, setPlaces] = useState<StorageLocation[]>([])
   const [settings, setSettings] = useState<AppSettings>()
   const [labelTokens, setLabelTokens] = useState<Record<string, string>>({})
+  const [placeTokens, setPlaceTokens] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [origin, setOrigin] = useState('')
   const [onlyKey, setOnlyKey] = useState<string | null>(null)
@@ -123,8 +124,11 @@ export default function LabelsPage() {
       // The signed per-item tokens the QR codes carry. Not fatal if refused — a label
       // without one still works for anyone signed in, which beats printing nothing.
       api.auth.labelTokens().catch(() => ({} as Record<string, string>)),
+      api.auth.locationLabelTokens().catch(() => ({} as Record<string, string>)),
     ])
-      .then(([eq, p, s, t]) => { setEquipment(eq); setPlaces(p); setSettings(s); setLabelTokens(t) })
+      .then(([eq, p, s, t, pt]) => {
+        setEquipment(eq); setPlaces(p); setSettings(s); setLabelTokens(t); setPlaceTokens(pt)
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -155,13 +159,19 @@ export default function LabelsPage() {
   // location get shortened — don't "fix" this into uniformity.
   const placeItems = useMemo<LabelItem[]>(() => places.map(p => {
     const ancestors = locationPath(p.parentId, places)
+    // Only the log QR carries the token: it is what a scan without an account may use. The
+    // contents view needs storage.read, which a label cannot grant, so a token there would
+    // authorise nothing.
+    const token = placeTokens[p.id]
+    const q = token ? `?t=${encodeURIComponent(token)}` : ''
     return {
       key: `place:${p.id}`, kind: 'place', icon: p.icon || DEFAULT_LOCATION_ICON, name: p.name,
       lines: ancestors ? [ancestors] : [],
       caption: 'Contents',
       qrUrl: `${qrBase}/storage/${p.id}`,
+      maintenanceUrl: `${qrBase}/storage/${p.id}/log${q}`,
     }
-  }), [places, qrBase])
+  }), [places, qrBase, placeTokens])
 
   const itemsByKey = useMemo(() => {
     const m = new Map<string, LabelItem>()
@@ -241,7 +251,7 @@ export default function LabelsPage() {
   const qrColumn = qrPosition === 'top' || qrPosition === 'bottom'
   const qrCapMm = design.qrSizeMm > 0 ? design.qrSizeMm : QR_MAX_MM
   const showCaption = qrPosition !== 'none' && Math.min(layout.labelWidthMm, layout.labelHeightMm) >= 34
-  // Second (maintenance) QR only on large enough labels, and only for equipment.
+  // Second (maintenance) QR only on large enough labels.
   const twoQr = design.maintenanceQr && qrPosition !== 'none'
     && Math.min(layout.labelWidthMm, layout.labelHeightMm) >= MAINT_QR_MIN_MM
   let qrEdgeMm = qrPosition === 'none'
@@ -421,7 +431,7 @@ export default function LabelsPage() {
                     className="w-4 h-4 accent-blue-600 mt-0.5"
                   />
                   <span className="text-xs text-slate-600 dark:text-slate-300">
-                    Add a maintenance quick-log QR to equipment labels
+                    Add a maintenance quick-log QR to labels
                     <span className="block text-slate-400 dark:text-slate-500">
                       Second QR (→ log) on labels at least {MAINT_QR_MIN_MM}mm on the short edge.
                       {design.maintenanceQr && !twoQr && ' Current label is too small — not shown.'}
@@ -509,7 +519,7 @@ export default function LabelsPage() {
                       align={design.align}
                       showCaption={showCaption}
                       fontScale={fontScale}
-                      secondaryQrUrl={twoQr && it.kind === 'equipment' ? it.maintenanceUrl : undefined}
+                      secondaryQrUrl={twoQr ? it.maintenanceUrl : undefined}
                       secondaryCaption="Log"
                     />
                   ))}

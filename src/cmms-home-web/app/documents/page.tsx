@@ -83,7 +83,7 @@ function ClassifyForm({ doc, equipment, parts, categories, onClassified, onCance
     }
     setLinkRows(prev => prev.map((r, i) => i === index ? { ...r, target, eventId: '', loadingEvents: true } : r))
     try {
-      const events = await api.events.list(equipmentId)
+      const events = await api.events.list({ kind: 'equipment', id: equipmentId })
       setLinkRows(prev => prev.map((r, i) => i === index ? { ...r, events, loadingEvents: false } : r))
     } catch {
       setLinkRows(prev => prev.map((r, i) => i === index ? { ...r, events: [], loadingEvents: false } : r))

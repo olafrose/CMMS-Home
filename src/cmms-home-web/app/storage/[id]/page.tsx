@@ -7,7 +7,11 @@ import { QRCodeSVG } from 'qrcode.react'
 import { api } from '@/lib/api'
 import { DEFAULT_LOCATION_ICON } from '@/lib/storage'
 import AddToLocation from '@/components/AddToLocation'
-import type { StorageLocationContents } from '@/lib/types'
+import MaintenanceSchedule from '@/components/MaintenanceSchedule'
+import MaintenanceHistory from '@/components/MaintenanceHistory'
+import { useAuth } from '@/components/AuthProvider'
+import { targetLogHref } from '@/lib/maintenance'
+import type { MaintenanceEvent, MaintenanceRule, MaintenanceTarget, StorageLocationContents } from '@/lib/types'
 
 const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700'
 
@@ -27,7 +31,10 @@ function Row({ href, icon, name, sub, badge }: { href: string; icon: string; nam
 
 export default function StorageContentsPage() {
   const { id } = useParams<{ id: string }>()
+  const { loading: authLoading, can } = useAuth()
   const [data, setData] = useState<StorageLocationContents | null>(null)
+  const [events, setEvents] = useState<MaintenanceEvent[]>([])
+  const [rules, setRules] = useState<MaintenanceRule[]>([])
   const [origin, setOrigin] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -40,12 +47,27 @@ export default function StorageContentsPage() {
     load().finally(() => setLoading(false))
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The place's own maintenance — literal, not what is stored in it. Fetched apart from the
+  // contents, and only when readable, so a role that may browse storage but not history
+  // still gets the page rather than a failed Promise.all.
+  const canReadEvents = !authLoading && can('events.read')
+  const canReadRules = !authLoading && can('rules.read')
+  useEffect(() => {
+    if (canReadEvents) api.events.list({ kind: 'place', id }).then(setEvents).catch(() => {})
+  }, [id, canReadEvents])
+  useEffect(() => {
+    if (canReadRules) api.rules.list({ kind: 'place', id }).then(setRules).catch(() => {})
+  }, [id, canReadRules])
+
   if (loading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
   if (!data) return <div className="p-6 text-red-500 text-sm">Place not found.</div>
 
   const { location, ancestors, children, parts, equipment } = data
   const total = children.length + parts.length + equipment.length
-  const qrUrl = `${process.env.NEXT_PUBLIC_QR_BASE_URL || origin}/storage/${id}`
+  const target: MaintenanceTarget = { kind: 'place', id }
+  const qrBase = process.env.NEXT_PUBLIC_QR_BASE_URL || origin
+  const qrUrl = `${qrBase}/storage/${id}`
+  const logUrl = `${qrBase}${targetLogHref(target)}`
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-6">
@@ -73,14 +95,27 @@ export default function StorageContentsPage() {
 
       <AddToLocation locationId={id} onChanged={load} />
 
+      {/* Maintenance on the place itself (a room repainted, gutters cleaned) */}
+      {can('events.create') && (
+        <Link href={targetLogHref(target)} className="block w-full bg-blue-600 text-white text-center font-semibold py-4 rounded-xl shadow text-lg">+ Log Maintenance</Link>
+      )}
+      {canReadRules && <MaintenanceSchedule target={target} rules={rules} setRules={setRules} />}
+      {canReadEvents && <MaintenanceHistory target={target} events={events} />}
+
       <section>
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">QR Code</h2>
           <Link href={`/labels?only=place:${id}`} className="text-sm text-blue-500 font-medium">🖨️ Print label</Link>
         </div>
-        <div className={`${card} p-5 flex flex-col items-center gap-2`}>
-          {origin && <QRCodeSVG value={qrUrl} size={160} bgColor="transparent" fgColor="currentColor" className="text-slate-900 dark:text-slate-100" />}
-          <p className="text-xs text-slate-400 dark:text-slate-500 text-center">Scan to see what&apos;s stored here</p>
+        <div className={`${card} p-5 grid grid-cols-2 gap-4`}>
+          <div className="flex flex-col items-center gap-2">
+            {origin && <QRCodeSVG value={qrUrl} size={120} bgColor="transparent" fgColor="currentColor" className="text-slate-900 dark:text-slate-100" />}
+            <p className="text-xs text-slate-400 dark:text-slate-500 text-center">Scan to see what&apos;s stored here</p>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            {origin && <QRCodeSVG value={logUrl} size={120} bgColor="transparent" fgColor="currentColor" className="text-slate-900 dark:text-slate-100" />}
+            <p className="text-xs text-slate-400 dark:text-slate-500 text-center">Scan to log maintenance</p>
+          </div>
         </div>
       </section>
     </div>

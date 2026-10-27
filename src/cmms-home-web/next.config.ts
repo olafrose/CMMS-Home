@@ -5,9 +5,10 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   turbopack: {},
   // Legacy QR labels encode /storage/{box|shelf}/{id}; boxes and shelves are now
-  // unified StorageLocations keyed by the same id.
+  // unified StorageLocations keyed by the same id. The type is spelled out so the pattern
+  // doesn't also swallow /storage/{id}/log.
   async redirects() {
-    return [{ source: '/storage/:type/:id', destination: '/storage/:id', permanent: false }]
+    return [{ source: '/storage/:type(box|shelf)/:id', destination: '/storage/:id', permanent: false }]
   },
 }
 

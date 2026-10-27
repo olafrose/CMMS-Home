@@ -116,22 +116,36 @@ Plus `PUT/DELETE /users/{id}` refuses to remove or deactivate the last active ad
 ## Label tokens
 
 ```
-t = Base64Url(HMACSHA256(LabelSigningKey, "equipment:" + id)[..16])
+t = Base64Url(HMACSHA256(LabelSigningKey, "equipment:" + id)[..16])   # an item's label
+t = Base64Url(HMACSHA256(LabelSigningKey, "location:" + id)[..16])    # a place's label
 ```
+
+The prefix makes tokens kind-specific: a place's token presented as an item's does not verify.
+`"equipment:"` is what every label printed before places existed signed, so it must never
+change.
 
 Deterministic, so reprinting a label yields the same token: no per-item column, and a lost
 label cannot be "reissued" into a second valid value. 128 bits, which keeps the QR scannable
 on a 40 mm label and is far past anything worth brute-forcing on a home network.
 
 A scan hands that token to `POST /auth/label-session`, which verifies it and sets a
-short-lived (2 h) signed cookie naming the item. The rest of the request path then needs no
+short-lived (2 h) signed cookie naming the item or place (`e:{id}` / `l:{id}` inside the
+signed payload, so one kind can't be relabelled as the other). The rest of the request path then needs no
 token plumbing, and `lib/api.ts` stays free of per-call token handling. The cookie is signed
 rather than stored: nothing to clean up, nothing to leak.
 
 Routes a label scan may reach are marked `.AllowLabelScope()` — a short, reviewable list
 rather than "whatever Anonymous happens to be granted". Everything else refuses a label-scoped
-caller outright. Each of those handlers must call `actor.MayTouchEquipment(id)` itself, since
-the filter cannot know whether the item id is in the route, the query or the body.
+caller outright. Each of those handlers must call `actor.MayTouchEquipment(id)` — or, for
+events and rules, `actor.MayTouchTarget(equipmentId, storageLocationId)` — itself, since the
+filter cannot know whether the id is in the route, the query or the body. `MayTouchTarget`
+requires *both* halves to match the scope, so an item's label cannot reach a place (or the
+equipment stored in it, for a place's label), and an unfiltered list is refused.
+
+A place's label reaches only `/storage/{id}/log`, not the place's contents page: that needs
+`storage.read`, which Anonymous does not hold and a label does not grant. So only the log QR on
+a place label carries a token (`proxy.ts` lets `/storage/{id}/log` through unauthenticated for
+the same reason). Place labels printed before this need reprinting to get a log QR at all.
 
 `POST /auth/label-key/rotate` (needs `settings.manage`) re-rolls the key and invalidates every
 label already printed. Deliberately blunt: tokens are derived rather than stored, so there is
@@ -238,6 +252,7 @@ handed the inventory.
 | | `POST /auth/label-session` | public (holding the label is the credential) |
 | | `POST /auth/password`, `GET/DELETE /auth/sessions` | signed in |
 | | `GET /auth/label-tokens` | `equipment.list` |
+| | `GET /auth/location-label-tokens` | `storage.read` |
 | | `POST /auth/label-key/rotate` | `settings.manage` |
 | Equipment | `GET /equipment` | `equipment.list` |
 | | `GET /equipment/{id}` | `equipment.read` — label-scopable |

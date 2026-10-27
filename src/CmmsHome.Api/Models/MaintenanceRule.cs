@@ -3,7 +3,9 @@ namespace CmmsHome.Api.Models;
 public class MaintenanceRule
 {
     public Guid Id { get; set; }
-    public Guid EquipmentId { get; set; }
+    // Exactly one set, as on MaintenanceEvent.
+    public Guid? EquipmentId { get; set; }
+    public Guid? StorageLocationId { get; set; }
     public string? Name { get; set; }
     public ScheduleType ScheduleType { get; set; } = ScheduleType.Interval;
 
@@ -21,7 +23,8 @@ public class MaintenanceRule
     public int ReminderLeadValue { get; set; } = 30;
     public IntervalUnit ReminderLeadUnit { get; set; } = IntervalUnit.Days;
 
-    public Equipment Equipment { get; set; } = null!;
+    public Equipment? Equipment { get; set; }
+    public StorageLocation? StorageLocation { get; set; }
 
     // DueAt/OverdueAt/Status are computed (getter-only, so EF maps no column for them)
     // and serialize with the rule. They are deliberately part of the API surface: the

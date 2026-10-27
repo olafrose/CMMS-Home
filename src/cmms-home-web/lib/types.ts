@@ -83,18 +83,25 @@ export interface Equipment {
   loans?: EquipmentLoan[]
 }
 
-export interface MaintenanceEvent {
+/** What an event or rule is about: one piece of equipment, or one place. */
+export type MaintenanceTarget = { kind: 'equipment' | 'place'; id: string }
+
+/** Exactly one of the pair is set on an event or rule. */
+interface TargetFields {
+  equipmentId: string | null
+  storageLocationId: string | null
+}
+
+export interface MaintenanceEvent extends TargetFields {
   id: string
-  equipmentId: string
   type: string
   note?: string
   photoUrl?: string
   createdAt: string
 }
 
-export interface MaintenanceRule {
+export interface MaintenanceRule extends TargetFields {
   id: string
-  equipmentId: string
   name?: string
   scheduleType: ScheduleType
   intervalValue: number
@@ -131,7 +138,8 @@ export interface CreateEquipmentDto {
 }
 
 export interface CreateEventDto {
-  equipmentId: string
+  equipmentId?: string
+  storageLocationId?: string
   type: string
   note?: string
   photoUrl?: string
@@ -145,7 +153,8 @@ export interface UpdateEventDto {
 }
 
 export interface CreateRuleDto {
-  equipmentId: string
+  equipmentId?: string
+  storageLocationId?: string
   name?: string
   scheduleType: ScheduleType
   intervalValue: number
@@ -259,6 +268,8 @@ export interface Me {
   permissions: string[]
   /** Set when the caller arrived by scanning a printed label, naming the item it covers. */
   labelScopedEquipmentId: string | null
+  /** The same for a place's label. At most one of the two is set. */
+  labelScopedStorageLocationId: string | null
 }
 
 export interface MeUser {

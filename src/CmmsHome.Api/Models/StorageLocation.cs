@@ -11,4 +11,9 @@ public class StorageLocation
     public Guid? ParentId { get; set; }
     public StorageLocation? Parent { get; set; }
     public List<StorageLocation> Children { get; set; } = [];
+
+    // Maintenance logged against the place itself — literal, not rolled up from what is
+    // stored here.
+    public List<MaintenanceEvent> Events { get; set; } = [];
+    public List<MaintenanceRule> Rules { get; set; } = [];
 }

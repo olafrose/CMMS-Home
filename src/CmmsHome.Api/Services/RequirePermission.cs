@@ -25,8 +25,8 @@ public static class RequirePermissionExtensions
     // label-scoped caller outright, so the blast radius of a printed QR code is a short,
     // reviewable list rather than "whatever Anonymous happens to be granted".
     //
-    // A route marked this way MUST check actor.MayTouchEquipment(id) itself — the filter
-    // cannot know which of the route, query or body carries the item id.
+    // A route marked this way MUST check actor.MayTouchEquipment(id) (or MayTouchTarget)
+    // itself — the filter cannot know which of the route, query or body carries the item id.
     public static RouteHandlerBuilder AllowLabelScope(this RouteHandlerBuilder builder) =>
         builder.WithMetadata(new LabelScopeAllowedMetadata());
 

@@ -13,18 +13,21 @@ public static class EventEndpoints
     {
         var group = app.MapGroup("/events").WithTags("Events");
 
-        group.MapGet("/", async (Guid? equipment_id, CmmsDbContext db, ActorAccessor accessor) =>
+        group.MapGet("/", async (Guid? equipment_id, Guid? storage_location_id, CmmsDbContext db, ActorAccessor accessor) =>
         {
             var actor = await accessor.GetAsync();
 
             // A label scan must name the item it scanned: unfiltered, this route would turn
             // one printed label into the whole house's maintenance history.
-            if (actor.IsLabelScoped && equipment_id != actor.ScopedEquipmentId)
+            if (!actor.MayTouchTarget(equipment_id, storage_location_id))
                 return LabelScope.Denied();
 
             var query = db.Events.AsQueryable();
             if (equipment_id.HasValue)
                 query = query.Where(e => e.EquipmentId == equipment_id.Value);
+            // Literal: events logged on this place, not on what is stored in it.
+            if (storage_location_id.HasValue)
+                query = query.Where(e => e.StorageLocationId == storage_location_id.Value);
             return Results.Ok(await query.OrderByDescending(e => e.CreatedAt).ToListAsync());
         }).RequirePermission(Permissions.EventsRead).AllowLabelScope();
 
@@ -36,7 +39,7 @@ public static class EventEndpoints
             // The scope is on the item, not the event, so the event has to be loaded before
             // it can be judged.
             var actor = await accessor.GetAsync();
-            if (!actor.MayTouchEquipment(evt.EquipmentId)) return LabelScope.Denied();
+            if (!actor.MayTouchTarget(evt.EquipmentId, evt.StorageLocationId)) return LabelScope.Denied();
 
             return Results.Ok(evt);
         }).RequirePermission(Permissions.EventsRead).AllowLabelScope();
@@ -68,12 +71,12 @@ public static class EventEndpoints
                     { ["type"] = [$"Type must be one of: {string.Join(", ", ValidTypes)}"] });
 
             // The whole point of the label flow, so also the route most worth pinning down:
-            // a scanned label may log against that one item and nothing else.
+            // a scanned label may log against that one item (or place) and nothing else.
             var actor = await accessor.GetAsync();
-            if (!actor.MayTouchEquipment(dto.EquipmentId)) return LabelScope.Denied();
+            if (!actor.MayTouchTarget(dto.EquipmentId, dto.StorageLocationId)) return LabelScope.Denied();
 
-            if (!await db.Equipment.AnyAsync(e => e.Id == dto.EquipmentId))
-                return Results.NotFound();
+            if (await MaintenanceTarget.ValidateAsync(dto.EquipmentId, dto.StorageLocationId, db) is { } invalid)
+                return invalid;
 
             // Default to now, but allow back-dating a forgotten task to when it was done.
             var occurredAt = DateTime.SpecifyKind(dto.OccurredAt ?? DateTime.UtcNow, DateTimeKind.Utc);
@@ -81,6 +84,7 @@ public static class EventEndpoints
             {
                 Id = Guid.NewGuid(),
                 EquipmentId = dto.EquipmentId,
+                StorageLocationId = dto.StorageLocationId,
                 Type = dto.Type,
                 Note = dto.Note,
                 PhotoUrl = dto.PhotoUrl,
@@ -95,7 +99,8 @@ public static class EventEndpoints
             // that a more recent event already advanced. Due-date schedules are anchored to
             // an explicit next-due date instead, so logging never touches them.
             await db.Rules
-                .Where(r => r.EquipmentId == dto.EquipmentId && r.ScheduleType == ScheduleType.Interval)
+                .Where(r => r.EquipmentId == dto.EquipmentId && r.StorageLocationId == dto.StorageLocationId
+                            && r.ScheduleType == ScheduleType.Interval)
                 .ExecuteUpdateAsync(s => s.SetProperty(
                     r => r.LastDoneAt,
                     r => r.LastDoneAt == null || occurredAt > r.LastDoneAt ? occurredAt : r.LastDoneAt));
@@ -106,5 +111,5 @@ public static class EventEndpoints
     }
 }
 
-record CreateEventDto(Guid EquipmentId, string Type, string? Note, string? PhotoUrl, DateTime? OccurredAt);
+record CreateEventDto(Guid? EquipmentId, Guid? StorageLocationId, string Type, string? Note, string? PhotoUrl, DateTime? OccurredAt);
 record UpdateEventDto(string Type, string? Note, DateTime? OccurredAt);

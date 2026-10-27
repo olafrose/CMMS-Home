@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import { formatLocationPath } from '@/lib/storage'
+import { DEFAULT_LOCATION_ICON, formatLocationPath } from '@/lib/storage'
+import { eventHref, targetHref, targetLogHref, targetOf } from '@/lib/maintenance'
 import type { AppSettings, Equipment, MaintenanceEvent, MaintenanceRule, Part, StorageLocation } from '@/lib/types'
 
 // Whole days from now until an instant (negative = past). Pure date formatting — the
@@ -75,6 +76,22 @@ export default function DashboardPage() {
   // Breadcrumb for anything holding a storageLocationId.
   const pathOf = (locationId?: string) => formatLocationPath(locationId, locations, settings)
 
+  // What a rule or event is about, for display: an item (named, with where it is kept) or a
+  // place (its icon marks it as one, and its path is where the place itself sits).
+  function describe(x: { equipmentId: string | null; storageLocationId: string | null }) {
+    const target = targetOf(x)
+    if (target.kind === 'place') {
+      const place = locations.find((l) => l.id === target.id)
+      return {
+        target,
+        name: place ? `${place.icon ?? DEFAULT_LOCATION_ICON} ${place.name}` : '…',
+        path: pathOf(place?.parentId),
+      }
+    }
+    const item = equipment[target.id]
+    return { target, name: item?.name ?? '…', path: pathOf(item?.storageLocationId) }
+  }
+
   const overdue = rules.filter((r) => r.status === 'Overdue' || r.status === 'Due')
   const upcoming = rules.filter((r) => r.status === 'Upcoming')
 
@@ -107,22 +124,22 @@ export default function DashboardPage() {
           <section>
             <h2 className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-widest mb-2">Action required</h2>
             <ul className="space-y-2">
-              {overdue.map((r) => (
+              {overdue.map((r) => { const d = describe(r); return (
                 <li key={r.id}>
                   <Link
-                    href={`/equipment/${r.equipmentId}/log`}
+                    href={targetLogHref(d.target)}
                     className="flex items-center justify-between bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3"
                   >
                     <div>
-                      <p className="font-semibold text-slate-800 dark:text-slate-100">{equipment[r.equipmentId]?.name ?? '…'}</p>
-                      <PathLine path={pathOf(equipment[r.equipmentId]?.storageLocationId)} />
+                      <p className="font-semibold text-slate-800 dark:text-slate-100">{d.name}</p>
+                      <PathLine path={d.path} />
                       {r.name && <p className="text-xs text-slate-600 dark:text-slate-300">{r.name}</p>}
                       <p className="text-xs text-red-600 dark:text-red-400 font-medium">{dueLabel(r)}</p>
                     </div>
                     <span className="text-sm text-red-500 dark:text-red-400 font-bold">Log →</span>
                   </Link>
                 </li>
-              ))}
+              )})}
             </ul>
           </section>
         )}
@@ -132,22 +149,22 @@ export default function DashboardPage() {
           <section>
             <h2 className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">Upcoming</h2>
             <ul className="space-y-2">
-              {upcoming.map((r) => (
+              {upcoming.map((r) => { const d = describe(r); return (
                 <li key={r.id}>
                   <Link
-                    href={`/equipment/${r.equipmentId}`}
+                    href={targetHref(d.target)}
                     className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3"
                   >
                     <div>
-                      <p className="font-medium text-slate-800 dark:text-slate-100">{equipment[r.equipmentId]?.name ?? '…'}</p>
-                      <PathLine path={pathOf(equipment[r.equipmentId]?.storageLocationId)} />
+                      <p className="font-medium text-slate-800 dark:text-slate-100">{d.name}</p>
+                      <PathLine path={d.path} />
                       {r.name && <p className="text-xs text-slate-600 dark:text-slate-300">{r.name}</p>}
                       <p className="text-xs text-amber-700 dark:text-amber-400">{dueLabel(r)}</p>
                     </div>
                     <span className="text-slate-400 dark:text-slate-500 text-lg">›</span>
                   </Link>
                 </li>
-              ))}
+              )})}
             </ul>
           </section>
         )}
@@ -227,21 +244,21 @@ export default function DashboardPage() {
           <section>
             <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Recent activity</h2>
             <ul className="space-y-2">
-              {events.map((e) => (
+              {events.map((e) => { const d = describe(e); return (
                 <li key={e.id}>
                   <Link
-                    href={`/events/${e.id}?equipment_id=${e.equipmentId}`}
+                    href={eventHref(e.id, d.target)}
                     className="flex items-center justify-between bg-white dark:bg-slate-800 rounded-xl px-4 py-3 shadow-sm border border-slate-100 dark:border-slate-700"
                   >
                     <div>
-                      <p className="font-medium text-slate-800 dark:text-slate-100">{equipment[e.equipmentId]?.name ?? '…'}</p>
-                      <PathLine path={pathOf(equipment[e.equipmentId]?.storageLocationId)} />
+                      <p className="font-medium text-slate-800 dark:text-slate-100">{d.name}</p>
+                      <PathLine path={d.path} />
                       <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{e.type}</p>
                     </div>
                     <span className="text-xs text-slate-400 dark:text-slate-500">{formatDate(e.createdAt)}</span>
                   </Link>
                 </li>
-              ))}
+              )})}
             </ul>
           </section>
         )}

@@ -52,8 +52,10 @@ const PUBLIC_PREFIXES = [
  * these to /login would destroy the entire feature, so they are matched explicitly —
  * `/equipment/{id}`, `/equipment/{id}/log`, and the legacy `/assets/...` forms still living
  * on labels printed before the merge. `new` is excluded: it is a create form, not a scan.
+ * A place's label only reaches `/storage/{id}/log`: its contents page needs storage.read,
+ * which a label never grants, so letting that through would only show an error.
  */
-const QR_PATH = /^\/(?:equipment|assets)\/(?!new$)[^/]+(?:\/log)?$/
+const QR_PATH = /^\/(?:(?:equipment|assets)\/(?!new$)[^/]+(?:\/log)?|storage\/[^/]+\/log)$/
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

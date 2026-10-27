@@ -125,11 +125,26 @@ public static class StorageLocationEndpoints
             if (await db.StorageLocations.AnyAsync(s => s.ParentId == id))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["children"] = ["Empty or move the places inside first"] });
 
+            // A place's own maintenance history is not collateral of tidying the storage tree
+            // (the FK is Restrict for the same reason). Say what is in the way.
+            // Events can't be deleted at all, so a place with history is kept for good; a
+            // schedule is only in the way until someone deletes it.
+            var events = await db.Events.CountAsync(e => e.StorageLocationId == id);
+            if (events > 0)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                    { ["maintenance"] = [$"This place has {Plural(events, "logged maintenance event")}, so it's kept to preserve that history"] });
+            var rules = await db.Rules.CountAsync(r => r.StorageLocationId == id);
+            if (rules > 0)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                    { ["maintenance"] = [$"Delete this place's {Plural(rules, "maintenance schedule")} first"] });
+
             db.StorageLocations.Remove(loc); // items here have StorageLocationId set null
             await db.SaveChangesAsync();
             return Results.NoContent();
         }).RequirePermission(Permissions.StorageDelete);
     }
+
+    static string Plural(int n, string noun) => n == 1 ? $"1 {noun}" : $"{n} {noun}s";
 
     // internal: AppSettingsEndpoints reuses this to count places left over a lowered cap.
     internal static int DepthOf(Guid id, List<StorageLocation> all)

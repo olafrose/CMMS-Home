@@ -5,21 +5,8 @@ import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import { useAuth } from '@/components/AuthProvider'
+import { EVENT_TYPES, EVENT_TYPE_COLOR as eventTypeColor, targetHref } from '@/lib/maintenance'
 import type { MaintenanceEvent, Part, PartUsage } from '@/lib/types'
-
-const EVENT_TYPES = [
-  { value: 'maintenance', label: '🔩 Maintenance', active: 'border-blue-400 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' },
-  { value: 'cleaning',    label: '🧹 Cleaning',    active: 'border-teal-400 bg-teal-50 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300' },
-  { value: 'repair',      label: '🛠 Repair',      active: 'border-red-400 bg-red-50 dark:bg-red-900/40 text-red-700 dark:text-red-300' },
-  { value: 'replacement', label: '🔄 Replacement', active: 'border-purple-400 bg-purple-50 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' },
-]
-
-const eventTypeColor: Record<string, string> = {
-  maintenance: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
-  repair: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
-  cleaning: 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300',
-  replacement: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
-}
 
 const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700'
 
@@ -31,8 +18,12 @@ export default function EventDetailPage() {
   const { id: eventId } = useParams<{ id: string }>()
   const { can } = useAuth()
   const searchParams = useSearchParams()
-  const equipmentId = searchParams.get('equipment_id') ?? ''
-  const backHref = equipmentId ? `/equipment/${equipmentId}` : '/assets'
+  // Back to wherever the event was opened from: an item's page or a place's.
+  const equipmentId = searchParams.get('equipment_id')
+  const placeId = searchParams.get('storage_location_id')
+  const backHref = placeId ? targetHref({ kind: 'place', id: placeId })
+    : equipmentId ? targetHref({ kind: 'equipment', id: equipmentId })
+    : '/assets'
 
   const [event, setEvent] = useState<MaintenanceEvent | null>(null)
   const [usages, setUsages] = useState<PartUsage[]>([])

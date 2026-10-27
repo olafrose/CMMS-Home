@@ -53,6 +53,33 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .HasForeignKey(r => r.EquipmentId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // A place can be maintained too. Restrict, not Cascade: deleting a place is a tidy-up
+        // of the storage tree, and it must not quietly take years of history with it the way
+        // deleting an item (a deliberate "this is gone") does. The endpoint refuses first and
+        // says why; this is the backstop.
+        modelBuilder.Entity<StorageLocation>()
+            .HasMany(s => s.Events)
+            .WithOne(m => m.StorageLocation)
+            .HasForeignKey(m => m.StorageLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<StorageLocation>()
+            .HasMany(s => s.Rules)
+            .WithOne(r => r.StorageLocation)
+            .HasForeignKey(r => r.StorageLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Exactly one target. The endpoints validate this with a readable message, but unlike
+        // DocumentLink it is cheap to make impossible here — and a row with no target would be
+        // history nobody can reach.
+        modelBuilder.Entity<MaintenanceEvent>()
+            .ToTable(t => t.HasCheckConstraint("CK_Events_OneTarget",
+                "num_nonnulls(\"EquipmentId\", \"StorageLocationId\") = 1"));
+
+        modelBuilder.Entity<MaintenanceRule>()
+            .ToTable(t => t.HasCheckConstraint("CK_Rules_OneTarget",
+                "num_nonnulls(\"EquipmentId\", \"StorageLocationId\") = 1"));
+
         modelBuilder.Entity<Equipment>()
             .HasMany(e => e.Loans)
             .WithOne(l => l.Equipment)

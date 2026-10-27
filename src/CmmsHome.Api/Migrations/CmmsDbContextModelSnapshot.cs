@@ -347,7 +347,7 @@ namespace CmmsHome.Api.Migrations
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("EquipmentId")
+                    b.Property<Guid?>("EquipmentId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Note")
@@ -355,6 +355,9 @@ namespace CmmsHome.Api.Migrations
 
                     b.Property<string>("PhotoUrl")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("StorageLocationId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -366,7 +369,12 @@ namespace CmmsHome.Api.Migrations
 
                     b.HasIndex("EquipmentId");
 
-                    b.ToTable("Events");
+                    b.HasIndex("StorageLocationId");
+
+                    b.ToTable("Events", t =>
+                        {
+                            t.HasCheckConstraint("CK_Events_OneTarget", "num_nonnulls(\"EquipmentId\", \"StorageLocationId\") = 1");
+                        });
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.MaintenanceRule", b =>
@@ -383,7 +391,7 @@ namespace CmmsHome.Api.Migrations
                     b.Property<int>("DueWindowValue")
                         .HasColumnType("integer");
 
-                    b.Property<Guid>("EquipmentId")
+                    b.Property<Guid?>("EquipmentId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("IntervalUnit")
@@ -418,11 +426,19 @@ namespace CmmsHome.Api.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<Guid?>("StorageLocationId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EquipmentId");
 
-                    b.ToTable("Rules");
+                    b.HasIndex("StorageLocationId");
+
+                    b.ToTable("Rules", t =>
+                        {
+                            t.HasCheckConstraint("CK_Rules_OneTarget", "num_nonnulls(\"EquipmentId\", \"StorageLocationId\") = 1");
+                        });
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.Part", b =>
@@ -1295,10 +1311,16 @@ namespace CmmsHome.Api.Migrations
                     b.HasOne("CmmsHome.Api.Models.Equipment", "Equipment")
                         .WithMany("Events")
                         .HasForeignKey("EquipmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("CmmsHome.Api.Models.StorageLocation", "StorageLocation")
+                        .WithMany("Events")
+                        .HasForeignKey("StorageLocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Equipment");
+
+                    b.Navigation("StorageLocation");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.MaintenanceRule", b =>
@@ -1306,10 +1328,16 @@ namespace CmmsHome.Api.Migrations
                     b.HasOne("CmmsHome.Api.Models.Equipment", "Equipment")
                         .WithMany("Rules")
                         .HasForeignKey("EquipmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("CmmsHome.Api.Models.StorageLocation", "StorageLocation")
+                        .WithMany("Rules")
+                        .HasForeignKey("StorageLocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Equipment");
+
+                    b.Navigation("StorageLocation");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.Part", b =>
@@ -1436,6 +1464,10 @@ namespace CmmsHome.Api.Migrations
             modelBuilder.Entity("CmmsHome.Api.Models.StorageLocation", b =>
                 {
                     b.Navigation("Children");
+
+                    b.Navigation("Events");
+
+                    b.Navigation("Rules");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.User", b =>

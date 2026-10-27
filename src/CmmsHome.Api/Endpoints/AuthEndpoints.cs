@@ -102,26 +102,39 @@ public static class AuthEndpoints
             return Results.NoContent();
         }).RequireAuthenticated();
 
-        // Exchanges a printed label's `?t=` for a short-lived scope naming that one item.
+        // Exchanges a printed label's `?t=` for a short-lived scope naming that one item or place.
         // Public by necessity: proving you hold the label IS the credential — that is
         // exactly the same standing a printed QR code has always had.
         group.MapPost("/label-session", async (
             LabelSessionDto dto, CmmsDbContext db, LabelSigner labels, AccountService accounts, HttpContext http) =>
         {
-            if (!await labels.VerifyLabelTokenAsync(dto.EquipmentId, dto.Token))
+            LabelTarget? target = (dto.EquipmentId, dto.StorageLocationId) switch
+            {
+                (Guid e, null) => LabelTarget.Equipment(e),
+                (null, Guid l) => LabelTarget.StorageLocation(l),
+                _ => null,
+            };
+            if (target is not LabelTarget t)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                    { ["target"] = ["Set exactly one of EquipmentId or StorageLocationId."] });
+
+            if (!await labels.VerifyLabelTokenAsync(t, dto.Token))
                 return Results.Problem(
                     detail: "That label is not valid. It may have been printed before the labels were last revoked.",
                     title: "Invalid label", statusCode: 401);
 
-            if (!await db.Equipment.AnyAsync(e => e.Id == dto.EquipmentId))
-                return Results.NotFound();
+            var exists = t.Kind == LabelTargetKind.Equipment
+                ? await db.Equipment.AnyAsync(e => e.Id == t.Id)
+                : await db.StorageLocations.AnyAsync(s => s.Id == t.Id);
+            if (!exists) return Results.NotFound();
 
-            var cookie = await labels.IssueLabelSessionAsync(dto.EquipmentId);
+            var cookie = await labels.IssueLabelSessionAsync(t);
             http.Response.Cookies.Append(AuthCookies.LabelSession, cookie, accounts.LabelCookieOptions());
 
             return Results.Ok(new
             {
                 equipmentId = dto.EquipmentId,
+                storageLocationId = dto.StorageLocationId,
                 expiresInSeconds = (int)LabelSigner.LabelSessionLifetime.TotalSeconds,
             });
         }).Public("holding the printed label is the credential");
@@ -136,10 +149,26 @@ public static class AuthEndpoints
 
             var tokens = new Dictionary<string, string>(ids.Count);
             foreach (var id in ids)
-                tokens[id.ToString()] = await labels.ComputeLabelTokenAsync(id);
+                tokens[id.ToString()] = await labels.ComputeLabelTokenAsync(LabelTarget.Equipment(id));
 
             return Results.Ok(tokens);
         }).RequirePermission(Permissions.EquipmentList);
+
+        // The same for place labels. A separate route rather than a second map in the one
+        // above so neither response changes shape, and so each is gated on browsing the
+        // thing it prints labels for.
+        group.MapGet("/location-label-tokens", async (CmmsDbContext db, LabelSigner labels, Guid? storage_location_id) =>
+        {
+            var ids = storage_location_id is { } one
+                ? [one]
+                : await db.StorageLocations.Select(s => s.Id).ToListAsync();
+
+            var tokens = new Dictionary<string, string>(ids.Count);
+            foreach (var id in ids)
+                tokens[id.ToString()] = await labels.ComputeLabelTokenAsync(LabelTarget.StorageLocation(id));
+
+            return Results.Ok(tokens);
+        }).RequirePermission(Permissions.StorageRead);
 
         // Invalidates every label already printed. Deliberately blunt: there is no per-label
         // revocation because tokens are derived rather than stored, and "reprint everything"
@@ -220,6 +249,7 @@ public static class AuthEndpoints
             // is server-side; this is only so the UI does not offer what will be refused.
             permissions,
             labelScopedEquipmentId = actor.ScopedEquipmentId,
+            labelScopedStorageLocationId = actor.ScopedStorageLocationId,
         };
     }
 }
@@ -227,4 +257,4 @@ public static class AuthEndpoints
 record LoginDto(string? Username, string? Password);
 record SetupDto(string? Username, string? Password, string? DisplayName);
 record ChangePasswordDto(string? CurrentPassword, string? NewPassword);
-record LabelSessionDto(Guid EquipmentId, string? Token);
+record LabelSessionDto(Guid? EquipmentId, Guid? StorageLocationId, string? Token);

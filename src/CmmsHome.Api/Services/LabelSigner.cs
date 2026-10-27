@@ -70,16 +70,16 @@ public class LabelSigner(CmmsDbContext db)
         return secret.LabelSigningKey;
     }
 
-    public async Task<string> ComputeLabelTokenAsync(Guid equipmentId)
+    public async Task<string> ComputeLabelTokenAsync(LabelTarget target)
     {
         var key = await GetKeyAsync();
-        return AuthTokens.Base64Url(Sign(key, $"equipment:{equipmentId:D}").AsSpan(0, TokenBytes));
+        return AuthTokens.Base64Url(Sign(key, $"{target.TokenPrefix}:{target.Id:D}").AsSpan(0, TokenBytes));
     }
 
-    public async Task<bool> VerifyLabelTokenAsync(Guid equipmentId, string? token)
+    public async Task<bool> VerifyLabelTokenAsync(LabelTarget target, string? token)
     {
         if (string.IsNullOrWhiteSpace(token)) return false;
-        var expected = await ComputeLabelTokenAsync(equipmentId);
+        var expected = await ComputeLabelTokenAsync(target);
 
         // Fixed-time compare: this is a signature check, so leaking how many leading
         // characters matched would let a caller build a valid token a byte at a time.
@@ -87,23 +87,27 @@ public class LabelSigner(CmmsDbContext db)
             Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(token));
     }
 
-    public async Task<string> IssueLabelSessionAsync(Guid equipmentId)
+    public async Task<string> IssueLabelSessionAsync(LabelTarget target)
     {
         var expires = DateTimeOffset.UtcNow.Add(LabelSessionLifetime).ToUnixTimeSeconds();
-        var payload = $"{equipmentId:D}.{expires}";
+        var payload = $"{target.CookieTag}:{target.Id:D}.{expires}";
         var key = await GetKeyAsync();
         return $"{payload}.{AuthTokens.Base64Url(Sign(key, payload))}";
     }
 
-    // Returns the item the caller may act on, or null if there is no valid scope. Never
+    // Returns the target the caller may act on, or null if there is no valid scope. Never
     // throws on malformed input: this reads an attacker-supplied cookie.
-    public async Task<Guid?> TryReadLabelSessionAsync(string? cookie)
+    //
+    // The kind is inside the signed payload, so an equipment scope can't be relabelled as a
+    // place one. Cookies from before places had labels carry no tag and are rejected —
+    // they live two hours, and the log page re-exchanges its `?t=` on every load anyway.
+    public async Task<LabelTarget?> TryReadLabelSessionAsync(string? cookie)
     {
         if (string.IsNullOrWhiteSpace(cookie)) return null;
 
         var parts = cookie.Split('.');
         if (parts.Length != 3) return null;
-        if (!Guid.TryParse(parts[0], out var equipmentId)) return null;
+        if (LabelTarget.TryParseCookieSubject(parts[0]) is not LabelTarget target) return null;
         if (!long.TryParse(parts[1], out var expiresUnix)) return null;
         if (DateTimeOffset.FromUnixTimeSeconds(expiresUnix) <= DateTimeOffset.UtcNow) return null;
 
@@ -112,10 +116,38 @@ public class LabelSigner(CmmsDbContext db)
 
         return CryptographicOperations.FixedTimeEquals(
             Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(parts[2]))
-            ? equipmentId
+            ? target
             : null;
     }
 
     private static byte[] Sign(string base64Key, string payload) =>
         HMACSHA256.HashData(Convert.FromBase64String(base64Key), Encoding.UTF8.GetBytes(payload));
+}
+
+// What a printed label names: one item, or one place.
+public enum LabelTargetKind { Equipment, StorageLocation }
+
+public readonly record struct LabelTarget(LabelTargetKind Kind, Guid Id)
+{
+    public static LabelTarget Equipment(Guid id) => new(LabelTargetKind.Equipment, id);
+    public static LabelTarget StorageLocation(Guid id) => new(LabelTargetKind.StorageLocation, id);
+
+    // Signed into the QR token. "equipment:" is what every label printed so far signed, so
+    // it must never change or those labels stop working.
+    public string TokenPrefix => Kind == LabelTargetKind.Equipment ? "equipment" : "location";
+
+    // The cookie's shorter tag for the same thing.
+    public string CookieTag => Kind == LabelTargetKind.Equipment ? "e" : "l";
+
+    public static LabelTarget? TryParseCookieSubject(string subject)
+    {
+        var colon = subject.IndexOf(':');
+        if (colon < 0 || !Guid.TryParse(subject.AsSpan(colon + 1), out var id)) return null;
+        return subject[..colon] switch
+        {
+            "e" => Equipment(id),
+            "l" => StorageLocation(id),
+            _ => null,
+        };
+    }
 }

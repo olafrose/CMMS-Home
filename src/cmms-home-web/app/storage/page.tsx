@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/components/AuthProvider'
 import { childrenOf, locationPath, DEFAULT_LOCATION_ICON, LOCATION_ICON_CHOICES } from '@/lib/storage'
 import type { StorageLocation } from '@/lib/types'
@@ -168,7 +168,12 @@ export default function StoragePage() {
   async function del(loc: StorageLocation) {
     if (!confirm(`Delete "${loc.name}"? Anything stored here becomes unassigned.`)) return
     try { await api.storageLocations.delete(loc.id); setAll(p => p.filter(l => l.id !== loc.id)) }
-    catch { alert('Empty or move the places inside this one first.') }
+    catch (e) {
+      // The server says which thing is in the way: places inside, or the place's own
+      // maintenance history/schedules.
+      const reason = e instanceof ApiError && e.errors ? Object.values(e.errors).flat()[0] : undefined
+      alert(reason ?? 'Could not delete this place.')
+    }
   }
 
   const roots = childrenOf(undefined, all)
