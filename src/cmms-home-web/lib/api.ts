@@ -4,6 +4,7 @@ import type {
   CreateEquipmentDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
   AppSettings, SaveAppSettingsResult, ExternalLink,
   Me, User, SaveUserDto, AccessGrid, AuthSession, MaintenanceTarget,
+  ApiToken, MintApiTokenDto, CreatedApiToken, PermissionInfo,
 } from './types'
 import { targetFields, targetQuery } from './maintenance'
 
@@ -273,6 +274,14 @@ export const api = {
       request<{ rotated: boolean; message: string }>('/auth/label-key/rotate', { method: 'POST' }),
     sessions: () => request<AuthSession[]>('/auth/sessions'),
     revokeSession: (id: string) => request<void>(`/auth/sessions/${id}`, { method: 'DELETE' }),
+    /** The caller's own personal API tokens. Minting needs tokens.personal and a session. */
+    tokens: {
+      list: () => request<ApiToken[]>('/auth/tokens'),
+      grantable: () => request<PermissionInfo[]>('/auth/tokens/grantable-permissions'),
+      create: (dto: MintApiTokenDto) =>
+        request<CreatedApiToken>('/auth/tokens', { method: 'POST', body: JSON.stringify(dto) }),
+      revoke: (id: string) => request<void>(`/auth/tokens/${id}`, { method: 'DELETE' }),
+    },
   },
   users: {
     list: () => request<User[]>('/users'),
@@ -282,6 +291,15 @@ export const api = {
     update: (id: string, dto: SaveUserDto) =>
       request<User>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
     delete: (id: string) => request<void>(`/users/${id}`, { method: 'DELETE' }),
+    /** Any account's tokens; minting is service accounts only. */
+    tokens: {
+      list: (userId: string) => request<ApiToken[]>(`/users/${userId}/tokens`),
+      grantable: (userId: string) => request<PermissionInfo[]>(`/users/${userId}/grantable-permissions`),
+      create: (userId: string, dto: MintApiTokenDto) =>
+        request<CreatedApiToken>(`/users/${userId}/tokens`, { method: 'POST', body: JSON.stringify(dto) }),
+      revoke: (userId: string, id: string) =>
+        request<void>(`/users/${userId}/tokens/${id}`, { method: 'DELETE' }),
+    },
   },
   roles: {
     /** The whole grid in one call: catalogue, roles, and who is granted what. */

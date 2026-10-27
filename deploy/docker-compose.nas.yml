@@ -7,7 +7,6 @@
 #   MANAGED_FOLDERING     : true = move classified files into library/<Category>/
 #   PUID / PGID           : UID:GID the api runs as — must be able to write DOCS_PATH
 #   WEB_PORT              : host port to browse the app on
-#   SWAGGER_PROXY         : false = don't serve the API docs at /swagger on WEB_PORT
 #   SECURE_COOKIES        : true only behind an HTTPS reverse proxy
 #   RESET_ADMIN           : "user:password" one-shot admin create/recover (see .env.example)
 #
@@ -55,9 +54,6 @@ services:
     restart: unless-stopped
     environment:
       - API_URL=http://api:8080
-      # Swagger UI + OpenAPI doc at /swagger on WEB_PORT, proxied to the api
-      # container. The only route to them here, since the api port isn't published.
-      - SWAGGER_PROXY=${SWAGGER_PROXY:-true}
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:

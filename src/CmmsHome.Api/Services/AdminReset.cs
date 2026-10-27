@@ -50,6 +50,16 @@ public static class AdminReset
 
         var user = await db.Users.SingleOrDefaultAsync(u => u.Username == username);
 
+        // The hatch is for a person to get back in; a service account cannot sign in even
+        // with a password, so "resetting" one would only look like it had worked.
+        if (user is { Kind: UserKind.Service })
+        {
+            logger.LogWarning(
+                "Auth__ResetAdmin names {Username}, which is a service account. Choose a person's "
+                + "username, or a new one. Ignoring it.", username);
+            return;
+        }
+
         if (user is null)
         {
             await accounts.CreateLocalUserAsync(username, password, null, [SeededRoles.Admin]);

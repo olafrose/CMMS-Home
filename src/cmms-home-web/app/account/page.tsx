@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import { useAuth } from '@/components/AuthProvider'
+import ApiTokenManager, { type ApiTokenClient } from '@/components/ApiTokenManager'
 import type { AuthSession } from '@/lib/types'
 import { card, errorMessage, formatDate } from '@/app/settings/access/shared'
 
@@ -16,6 +17,14 @@ import { card, errorMessage, formatDate } from '@/app/settings/access/shared'
  * assigns in Settings → Access, and letting a user edit their own roles would be the grid
  * enforcing nothing.
  */
+
+/** Module-level so the manager gets the same object every render. */
+const personalTokens: ApiTokenClient = {
+  list: api.auth.tokens.list,
+  grantable: api.auth.tokens.grantable,
+  create: api.auth.tokens.create,
+  revoke: api.auth.tokens.revoke,
+}
 
 /** "Chrome on Android" from a user-agent string — enough to recognise a device, no more. */
 function describeDevice(ua: string | null): string {
@@ -57,16 +66,22 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 }
 
 export default function AccountPage() {
-  const { me, loading, authenticated } = useAuth()
+  const { me, loading, authenticated, can } = useAuth()
   const [sessions, setSessions] = useState<AuthSession[] | null>(null)
   const [sessionsError, setSessionsError] = useState('')
   const [revoking, setRevoking] = useState<string | 'others' | null>(null)
+  // Someone who has lost tokens.personal can't mint any more, but must still see and revoke
+  // what they minted before — so the section also shows whenever they hold any.
+  const [hasTokens, setHasTokens] = useState(false)
 
   useEffect(() => {
     if (!authenticated) return
     api.auth.sessions()
       .then(setSessions)
       .catch(e => setSessionsError(errorMessage(e, 'Could not load your devices.')))
+    api.auth.tokens.list()
+      .then(t => setHasTokens(t.length > 0))
+      .catch(() => { /* the section's own load reports errors */ })
   }, [authenticated])
 
   async function revoke(ids: string[], key: string) {
@@ -133,7 +148,7 @@ export default function AccountPage() {
         <span className="text-lg leading-none" aria-hidden="true">🔑</span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Change password</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">Signs out your other devices</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">Signs out your other devices and revokes your API tokens</p>
         </div>
         <span className="text-slate-300 dark:text-slate-600 text-lg">›</span>
       </Link>
@@ -188,6 +203,21 @@ export default function AccountPage() {
           </button>
         )}
       </section>
+
+      {(can('tokens.personal') || hasTokens) && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide px-1">
+            API tokens
+          </h2>
+          <p className="text-xs text-slate-400 dark:text-slate-500 px-1">
+            For your own scripts. A token acts as you, limited to the permissions you tick, and never
+            more than your roles allow at the time it is used. Personal tokens always expire.
+          </p>
+          <div className={`${card} px-4 py-3`}>
+            <ApiTokenManager client={personalTokens} personal canCreate={can('tokens.personal')} />
+          </div>
+        </section>
+      )}
     </div>
   )
 }

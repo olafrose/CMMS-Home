@@ -21,6 +21,10 @@ async function proxy(
   // without forwarding it every call reaches the API as an anonymous stranger.
   const cookie = request.headers.get('cookie')
   if (cookie) headers.set('cookie', cookie)
+  // API tokens. The NAS deploy publishes only this port, so for a script this proxy *is*
+  // the API; dropping the header would make every token call anonymous.
+  const authorization = request.headers.get('authorization')
+  if (authorization) headers.set('authorization', authorization)
   // So the sessions list names the device the user is holding rather than undici.
   const userAgent = request.headers.get('user-agent')
   if (userAgent) headers.set('user-agent', userAgent)

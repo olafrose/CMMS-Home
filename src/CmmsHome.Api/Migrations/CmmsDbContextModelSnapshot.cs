@@ -22,6 +22,66 @@ namespace CmmsHome.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("CmmsHome.Api.Models.ApiToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Hint")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ApiTokens");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.ApiTokenPermission", b =>
+                {
+                    b.Property<Guid>("ApiTokenId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Permission")
+                        .HasColumnType("text");
+
+                    b.HasKey("ApiTokenId", "Permission");
+
+                    b.ToTable("ApiTokenPermissions");
+                });
+
             modelBuilder.Entity("CmmsHome.Api.Models.AppSettings", b =>
                 {
                     b.Property<int>("Id")
@@ -614,6 +674,11 @@ namespace CmmsHome.Api.Migrations
                         new
                         {
                             RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
+                            Permission = "api.docs"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
                             Permission = "categories.manage"
                         },
                         new
@@ -780,6 +845,11 @@ namespace CmmsHome.Api.Migrations
                         {
                             RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
                             Permission = "storage.write"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
+                            Permission = "tokens.personal"
                         },
                         new
                         {
@@ -1130,6 +1200,9 @@ namespace CmmsHome.Api.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1196,6 +1269,29 @@ namespace CmmsHome.Api.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("UserRoles");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.ApiToken", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CmmsHome.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.ApiTokenPermission", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.ApiToken", null)
+                        .WithMany("Permissions")
+                        .HasForeignKey("ApiTokenId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.Document", b =>
@@ -1445,6 +1541,11 @@ namespace CmmsHome.Api.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.ApiToken", b =>
+                {
+                    b.Navigation("Permissions");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.Document", b =>

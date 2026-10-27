@@ -37,10 +37,19 @@ public static class RequirePermissionExtensions
     public static RouteHandlerBuilder Public(this RouteHandlerBuilder builder, string why) =>
         builder.WithMetadata(new PublicEndpointMetadata(why));
 
+    // Marks a permissioned route as unreachable with an API token, whatever its scope:
+    // minting tokens, chiefly. A token that could mint tokens could outlive its own
+    // revocation by leaving a successor behind, so only a signed-in person may do it.
+    public static RouteHandlerBuilder SessionOnly(this RouteHandlerBuilder builder) =>
+        builder.WithMetadata(new SessionOnlyMetadata());
+
     // Signed in, but needing no particular right: changing your own password,
     // signing out, listing your own sessions. A third category on purpose — forcing
     // these through a permission would mean an admin could accidentally revoke
     // someone's ability to log out.
+    //
+    // A person with a session only: these are the account's self-service routes, and an
+    // API token — scoped to the app's data — is not the account holder at a keyboard.
     public static RouteHandlerBuilder RequireAuthenticated(this RouteHandlerBuilder builder) =>
         builder
             .AddEndpointFilterFactory((ctx, next) => async invocation =>
@@ -51,6 +60,9 @@ public static class RequirePermissionExtensions
                 if (!actor.IsAuthenticated)
                     return Results.Problem(detail: "Signing in is required.", title: "Sign in required",
                         statusCode: 401, instance: invocation.HttpContext.Request.Path);
+
+                if (actor.IsApiToken)
+                    return TokenRefused(invocation.HttpContext);
 
                 return await next(invocation);
             })
@@ -66,6 +78,13 @@ public static class RequirePermissionExtensions
                 "No accounts exist yet. Create the first administrator to continue.",
                 new Dictionary<string, object?> { ["setupRequired"] = true });
 
+        if (!actor.Can(permission) && actor.IsApiToken && actor.OwnerPermissions?.Contains(permission) == true)
+            // The account could, the token was not given it. Worth saying apart from a roles
+            // refusal: the fix is a new token, not a request to an admin.
+            return Problem(http, 403, "Not permitted",
+                $"This token's scope does not include \"{Describe(permission)}\".",
+                new Dictionary<string, object?> { ["permission"] = permission, ["tokenScope"] = true });
+
         if (!actor.Can(permission))
             return actor.IsAuthenticated
                 // Signed in, but this is not theirs to do. Saying which permission is
@@ -78,6 +97,9 @@ public static class RequirePermissionExtensions
                     $"Signing in is required for \"{Describe(permission)}\".",
                     new Dictionary<string, object?> { ["permission"] = permission });
 
+        if (actor.IsApiToken && http.GetEndpoint()?.Metadata.GetMetadata<SessionOnlyMetadata>() is not null)
+            return TokenRefused(http);
+
         // Permission held, but by a caller who only proved they hold a printed label.
         if (actor.IsLabelScoped && http.GetEndpoint()?.Metadata.GetMetadata<LabelScopeAllowedMetadata>() is null)
             return Problem(http, 403, "Sign in required",
@@ -86,6 +108,11 @@ public static class RequirePermissionExtensions
 
         return null;
     }
+
+    private static IResult TokenRefused(HttpContext http) =>
+        Problem(http, 403, "Not available to API tokens",
+            "This needs a signed-in session. API tokens cannot manage accounts or mint other tokens.",
+            new Dictionary<string, object?> { ["sessionOnly"] = true });
 
     private static string Describe(string permission) =>
         Permissions.All.FirstOrDefault(p => p.Key == permission) is { } info
@@ -107,3 +134,5 @@ public record LabelScopeAllowedMetadata;
 public record PublicEndpointMetadata(string Reason);
 
 public record AuthenticatedOnlyMetadata;
+
+public record SessionOnlyMetadata;

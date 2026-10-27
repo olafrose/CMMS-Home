@@ -69,8 +69,35 @@ public class AccountService(
         return user;
     }
 
+    // No UserIdentity at all: that is what makes it unable to sign in. It acts only through
+    // the ApiTokens an admin mints for it.
+    public async Task<User> CreateServiceAccountAsync(
+        string username, string? displayName, IEnumerable<Guid> roleIds)
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = NormaliseUsername(username),
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim(),
+            Kind = UserKind.Service,
+            IsActive = true,
+        };
+
+        db.Users.Add(user);
+        foreach (var roleId in roleIds.Distinct())
+            db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = roleId });
+
+        await db.SaveChangesAsync();
+        return user;
+    }
+
     public async Task SetPasswordAsync(User user, string password)
     {
+        // Every caller already refuses this; thrown rather than ignored so a new caller that
+        // forgets fails loudly instead of quietly giving a token-only account a login.
+        if (user.Kind == UserKind.Service)
+            throw new InvalidOperationException("Service accounts cannot have a password.");
+
         var identity = await db.UserIdentities
             .SingleOrDefaultAsync(i => i.UserId == user.Id && i.Provider == UserIdentity.LocalProvider);
 

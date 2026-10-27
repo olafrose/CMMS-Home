@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '@/lib/api'
 import PasswordInput from '@/components/PasswordInput'
-import type { AccessRole, SaveUserDto, User } from '@/lib/types'
+import ApiTokenManager from '@/components/ApiTokenManager'
+import type { AccessRole, SaveUserDto, User, UserKind } from '@/lib/types'
 import { card, errorMessage, fieldErrors, formatDate } from './shared'
 
 interface Form {
@@ -12,10 +13,12 @@ interface Form {
   displayName: string
   isActive: boolean
   roleIds: string[]
+  kind: UserKind
 }
 
 function formFor(user?: User): Form {
   return {
+    kind: user?.kind ?? 'Person',
     username: user?.username ?? '',
     password: '',
     displayName: user?.displayName ?? '',
@@ -43,6 +46,8 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
   const [saveError, setSaveError] = useState<unknown>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
+  /** The account whose API tokens are expanded, if any. */
+  const [tokensFor, setTokensFor] = useState<string | null>(null)
 
   useEffect(() => {
     api.users.list()
@@ -105,6 +110,7 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
         displayName: form.displayName.trim() || undefined,
         isActive: form.isActive,
         roleIds: form.roleIds,
+        ...(editing === 'new' ? { kind: form.kind } : {}),
         // Omitted on edit means "leave the existing password alone"; required on create.
         ...(form.password ? { password: form.password } : {}),
       }
@@ -171,8 +177,34 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
     : ''
 
   function editor(user?: User) {
+    const service = form.kind === 'Service'
     return (
       <div className="space-y-2">
+        {!user && (
+          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-700 p-1 text-sm" role="radiogroup" aria-label="Account kind">
+            {(['Person', 'Service'] as const).map(k => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={form.kind === k}
+                onClick={() => patch({ kind: k, password: '' })}
+                className={`flex-1 py-1.5 rounded-lg font-medium ${form.kind === k
+                  ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400'}`}
+              >
+                {k === 'Person' ? 'Person' : 'Service account'}
+              </button>
+            ))}
+          </div>
+        )}
+        {service && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            For scripts and integrations. It has no password and cannot sign in; it acts only through
+            API tokens you create for it, each limited to part of what its roles allow.
+          </p>
+        )}
+
         <input
           type="text"
           value={form.username}
@@ -191,13 +223,15 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
           className="field"
         />
 
-        <PasswordInput
-          value={form.password}
-          onChange={e => patch({ password: e.target.value })}
-          placeholder={user ? 'New password (leave blank to keep)' : 'Password'}
-          autoComplete="new-password"
-          className="field"
-        />
+        {!service && (
+          <PasswordInput
+            value={form.password}
+            onChange={e => patch({ password: e.target.value })}
+            placeholder={user ? 'New password (leave blank to keep)' : 'Password'}
+            autoComplete="new-password"
+            className="field"
+          />
+        )}
         {passwordErrors.map(m => <p key={m} className="text-xs text-red-500">{m}</p>)}
 
         <div className="space-y-1">
@@ -227,7 +261,7 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
               onChange={e => patch({ isActive: e.target.checked })}
               className="w-4 h-4 accent-blue-600"
             />
-            Can sign in
+            {service ? 'Active (its tokens work)' : 'Can sign in'}
           </label>
         )}
 
@@ -236,7 +270,7 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
         <div className="flex gap-2 pt-1">
           <button
             onClick={save}
-            disabled={saving || !form.username.trim() || (!user && !form.password)}
+            disabled={saving || !form.username.trim() || (!user && !service && !form.password)}
             className="flex-1 bg-blue-600 text-white font-semibold py-2 rounded-xl disabled:opacity-50"
           >
             {saving ? 'Saving…' : user ? 'Save Changes' : 'Create Account'}
@@ -256,7 +290,8 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
     <section className="space-y-3">
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Accounts and the roles they hold. Rights come from the roles, so give someone a role rather
-        than ticking permissions per person.
+        than ticking permissions per person. Service accounts are for scripts: they hold roles too,
+        but act only through API tokens.
       </p>
 
       {editing === 'new' ? (
@@ -287,6 +322,11 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
                   <div className="flex-1 min-w-0">
                     <p className="text-slate-800 dark:text-slate-100 font-medium truncate">
                       {user.displayName || user.username}
+                      {user.kind === 'Service' && (
+                        <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300">
+                          service
+                        </span>
+                      )}
                       {!user.isActive && (
                         <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400">
                           inactive
@@ -294,7 +334,8 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
                       )}
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 truncate">
-                      {user.username} · last signed in {formatDate(user.lastLoginAt)}
+                      {user.username}
+                      {user.kind === 'Person' && <> · last signed in {formatDate(user.lastLoginAt)}</>}
                     </p>
                   </div>
                   <button
@@ -316,7 +357,9 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
 
                 <div className="flex items-center gap-2 flex-wrap">
                   {user.roles.length === 0 ? (
-                    <span className="text-xs text-slate-400 dark:text-slate-500">No roles — can sign in but do nothing</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      {user.kind === 'Service' ? 'No roles — its tokens can do nothing' : 'No roles — can sign in but do nothing'}
+                    </span>
                   ) : (
                     user.roles.map(r => (
                       <span
@@ -328,15 +371,43 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
                     ))
                   )}
                   <button
+                    onClick={() => setTokensFor(tokensFor === user.id ? null : user.id)}
+                    aria-expanded={tokensFor === user.id}
+                    className="ml-auto text-xs font-medium text-slate-500 dark:text-slate-400 underline"
+                  >
+                    API tokens
+                  </button>
+                  <button
                     onClick={() => setActive(user, !user.isActive)}
                     disabled={busyId === user.id}
-                    className="ml-auto text-xs font-medium text-slate-500 dark:text-slate-400 underline disabled:opacity-40"
+                    className="text-xs font-medium text-slate-500 dark:text-slate-400 underline disabled:opacity-40"
                   >
                     {user.isActive ? 'Deactivate' : 'Reactivate'}
                   </button>
                 </div>
 
                 {rowErrors[user.id] && <p className="text-xs text-red-500">{rowErrors[user.id]}</p>}
+
+                {tokensFor === user.id && (
+                  <div className="border-t border-slate-100 dark:border-slate-700 pt-2">
+                    {user.kind === 'Person' && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                        Personal tokens act as {user.username}. Only they can create them, from their account
+                        page; you can revoke them here.
+                      </p>
+                    )}
+                    <ApiTokenManager
+                      personal={user.kind === 'Person'}
+                      canCreate={user.kind === 'Service'}
+                      client={{
+                        list: () => api.users.tokens.list(user.id),
+                        grantable: () => api.users.tokens.grantable(user.id),
+                        create: dto => api.users.tokens.create(user.id, dto),
+                        revoke: id => api.users.tokens.revoke(user.id, id),
+                      }}
+                    />
+                  </div>
+                )}
               </>
             )}
           </li>

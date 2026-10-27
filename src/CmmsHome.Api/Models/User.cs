@@ -23,6 +23,11 @@ public class User
 
     public string? DisplayName { get; set; }
 
+    // Person or service account. A service account has no UserIdentity, so there is no
+    // password to sign in with — it can only act through an ApiToken. That absence is the
+    // guarantee; nothing else has to remember to refuse it at /auth/login.
+    public UserKind Kind { get; set; } = UserKind.Person;
+
     // Deactivating keeps history attributable while stopping new sign-ins, which deleting
     // would not: MaintenanceEvent.CreatedByUserId points here.
     public bool IsActive { get; set; } = true;
@@ -37,3 +42,7 @@ public class User
     [JsonIgnore]
     public List<UserIdentity> Identities { get; set; } = [];
 }
+
+// Service accounts exist for scripts and integrations. They hold roles like anyone else,
+// but never count as "the last administrator": a person must always be able to get in.
+public enum UserKind { Person, Service }

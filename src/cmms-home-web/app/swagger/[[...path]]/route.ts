@@ -6,29 +6,21 @@ const API_URL = process.env.API_URL ?? 'http://localhost:8080'
 // this prefix and forwards the rest, so /api/equipment reaches GET /equipment.
 const API_PREFIX = '/api'
 
-// Deployment toggle (SWAGGER_PROXY): off takes the API docs off the published web
-// port. Deliberately permissive about spelling — silently still serving the docs
-// because someone wrote `0` instead of `false` is the wrong way to be wrong.
-// Read once at module load, so changing it needs a container restart (as API_URL does).
-const OFF = new Set(['false', '0', 'off', 'no'])
-const ENABLED = !OFF.has((process.env.SWAGGER_PROXY ?? '').trim().toLowerCase())
-
 const PASS_THROUGH = ['content-type', 'cache-control', 'etag', 'last-modified', 'x-swagger-ui-version']
-const CONDITIONAL = ['if-none-match', 'if-modified-since']
+// The credentials: the API gates /swagger on api.docs, so without these every visit would
+// reach it as Anonymous and be refused.
+const FORWARDED = ['if-none-match', 'if-modified-since', 'cookie', 'authorization']
 
 /**
  * Proxies Swagger UI and the OpenAPI document from the api container, so the docs
  * are reachable on the single published web port. Only that port is published in
  * deploy/docker-compose.nas.yml — without this, /swagger has no route from outside.
- * Set SWAGGER_PROXY=false to close it off again.
+ * Who may open it is the API's decision (the api.docs permission), not this proxy's.
  */
 async function proxy(
   request: NextRequest,
   { params }: { params: Promise<{ path?: string[] }> },
 ) {
-  // Answer as if the route didn't exist, rather than redirecting into a 404.
-  if (!ENABLED) return new Response(null, { status: 404 })
-
   const { path } = await params
 
   // Swagger UI's index.html references its assets and the spec *relatively*
@@ -43,15 +35,24 @@ async function proxy(
   // Tell the API which prefix it is being viewed under, so the OpenAPI document
   // it serves points "Try it out" at the /api proxy instead of this host's root.
   headers.set('x-forwarded-prefix', API_PREFIX)
-  for (const h of CONDITIONAL) {
+  for (const h of FORWARDED) {
     const v = request.headers.get(h)
-    if (v) headers.set(h, v) // let the browser re-validate the ~1MB UI bundle
+    if (v) headers.set(h, v) // conditionals let the browser re-validate the ~1MB UI bundle
   }
 
   const upstream = await fetch(
     `${API_URL}/swagger/${path.join('/')}${request.nextUrl.search}`,
     { method: request.method, headers, redirect: 'manual' },
   )
+
+  // Someone opening the docs page while signed out: send them to sign in and back, rather
+  // than showing a bare problem+json. Only for the page itself — the spec and assets are
+  // fetched by scripts and by Swagger UI, which want the status code, not a redirect.
+  if (upstream.status === 401 && path.join('/') === 'index.html' && !request.headers.get('authorization')) {
+    const login = new URL('/login', request.nextUrl)
+    login.searchParams.set('next', '/swagger/index.html')
+    return new Response(null, { status: 307, headers: { location: login.pathname + login.search } })
+  }
 
   const respHeaders = new Headers()
   for (const h of PASS_THROUGH) {

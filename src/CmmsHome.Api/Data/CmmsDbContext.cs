@@ -29,6 +29,8 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
+    public DbSet<ApiTokenPermission> ApiTokenPermissions => Set<ApiTokenPermission>();
     public DbSet<ServerSecret> ServerSecrets => Set<ServerSecret>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -324,6 +326,37 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .Property(s => s.CreatedAt)
             .HasDefaultValueSql("now()");
 
+        // Looked up by hash on every bearer request, like Session.
+        modelBuilder.Entity<ApiToken>()
+            .HasIndex(t => t.TokenHash)
+            .IsUnique();
+
+        modelBuilder.Entity<ApiToken>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // The minting admin may be deleted later; the token is the service account's, not theirs.
+        modelBuilder.Entity<ApiToken>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(t => t.CreatedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ApiToken>()
+            .Property(t => t.CreatedAt)
+            .HasDefaultValueSql("now()");
+
+        modelBuilder.Entity<ApiTokenPermission>()
+            .HasKey(p => new { p.ApiTokenId, p.Permission });
+
+        modelBuilder.Entity<ApiToken>()
+            .HasMany(t => t.Permissions)
+            .WithOne()
+            .HasForeignKey(p => p.ApiTokenId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // Attribution survives the account: deleting a user leaves their logged events in
         // place with CreatedByUserId nulled, rather than cascading away the maintenance
         // history — the history is the point of the app, the account is bookkeeping.
@@ -380,8 +413,13 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
         // scan a label, log maintenance, and see what was logged — no browsing.
         var adminGrants = Permissions.AllKeys;
 
+        // Tokens and the API docs are opt-in beyond Admin: both are about scripting the app,
+        // which an admin should hand out deliberately rather than every member inheriting.
         var memberGrants = Permissions.AllKeys
-            .Except([Permissions.UsersManage, Permissions.RolesManage, Permissions.SettingsManage]);
+            .Except([
+                Permissions.UsersManage, Permissions.RolesManage, Permissions.SettingsManage,
+                Permissions.TokensPersonal, Permissions.ApiDocs,
+            ]);
 
         string[] viewerGrants =
         [

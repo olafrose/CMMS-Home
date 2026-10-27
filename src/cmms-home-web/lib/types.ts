@@ -270,12 +270,21 @@ export interface Me {
   labelScopedEquipmentId: string | null
   /** The same for a place's label. At most one of the two is set. */
   labelScopedStorageLocationId: string | null
+  /** True when the caller is an API token; `permissions` is then already narrowed to its scope. */
+  viaApiToken: boolean
 }
+
+/**
+ * A person signs in; a service account cannot, and acts only through the API tokens an
+ * admin mints for it. Fixed at creation.
+ */
+export type UserKind = 'Person' | 'Service'
 
 export interface MeUser {
   id: string
   username: string
   displayName: string | null
+  kind: UserKind
   createdAt: string
   roles: RoleRef[]
 }
@@ -289,6 +298,7 @@ export interface User {
   id: string
   username: string
   displayName: string | null
+  kind: UserKind
   isActive: boolean
   createdAt: string
   lastLoginAt: string | null
@@ -302,6 +312,36 @@ export interface SaveUserDto {
   displayName?: string
   isActive: boolean
   roleIds: string[]
+  /** Create only; ignored on edit. Omitted means Person. */
+  kind?: UserKind
+}
+
+/** An API token as listed. The secret itself is only ever returned once, by the create call. */
+export interface ApiToken {
+  id: string
+  name: string
+  /** Last few characters of the token, to match a config file's token to its row. */
+  hint: string
+  createdAt: string
+  createdByUserId: string | null
+  /** Null = never expires (service accounts only). */
+  expiresAt: string | null
+  lastUsedAt: string | null
+  expired: boolean
+  /** Scope; the owner's current roles still cap it on every request. */
+  permissions: string[]
+}
+
+export interface MintApiTokenDto {
+  name: string
+  expiresAt: string | null
+  permissions: string[]
+}
+
+/** The create response: the plaintext token, shown once and never retrievable again. */
+export interface CreatedApiToken {
+  token: string
+  apiToken: ApiToken
 }
 
 export interface AuthSession {

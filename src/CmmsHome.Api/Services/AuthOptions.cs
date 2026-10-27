@@ -23,5 +23,11 @@ public class AuthOptions
     // change or unchecks the wrong cell has no other way back in.
     public string? ResetAdmin { get; set; }
 
+    // Ceiling on a personal API token's lifetime. Personal tokens must expire — they act
+    // as a person, whose account is the more likely one to be phished or shared — while a
+    // service account's may be open-ended, since an integration breaking silently on a
+    // date nobody remembers is its own outage.
+    public int PersonalTokenMaxDays { get; set; } = 365;
+
     public const int MinPasswordLength = 8;
 }

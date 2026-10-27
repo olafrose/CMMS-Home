@@ -25,8 +25,10 @@ services:
       # moves files into /documents/library/<Category>/. Requires the rw mount below.
       - Documents__ManagedFoldering=true
       # Authentication. SecureCookies stays off locally: the session cookie would
-      # otherwise never be sent over plain HTTP. Set Auth__ResetAdmin="user:password"
-      # temporarily to create or recover an administrator, then remove it and restart.
+      # otherwise never be sent over plain HTTP. Add `- Auth__ResetAdmin=user:password`
+      # (NO quotes — in this list form they become part of the value; password ≥ 8
+      # chars) temporarily to create or recover an administrator, then remove it and
+      # run `docker compose up -d api` (a plain restart keeps the old environment).
       - Auth__SecureCookies=false
     volumes:
       # Watched folder (read-WRITE for managed foldering). The app writes only in
@@ -44,9 +46,6 @@ services:
       - "3000:3000"
     environment:
       - API_URL=http://api:8080
-      # Serve the API's Swagger UI + OpenAPI doc on this port too, at /swagger.
-      # Set false to close it off (locally the api port above is published anyway).
-      - SWAGGER_PROXY=${SWAGGER_PROXY:-true}
       # Set this to override the base URL encoded in QR codes.
       # Useful when accessing via reverse proxy, custom DNS, or VPN.
       # Example: NEXT_PUBLIC_QR_BASE_URL=https://cmms.myhome.net

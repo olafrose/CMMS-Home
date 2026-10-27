@@ -112,6 +112,57 @@ unrecoverable through the UI:
    whatever the grant rows say.
 
 Plus `PUT/DELETE /users/{id}` refuses to remove or deactivate the last active administrator.
+Only **people** count toward that: a service account may hold Admin, but it cannot sign in, so
+it being "the last admin" would leave nobody at the door.
+
+## API tokens
+
+The fourth kind of caller, for scripts and integrations: `Authorization: Bearer cmms_…`.
+
+**Two owners.**
+- **Service accounts** are `User` rows with `Kind = Service`. They have **no `UserIdentity`**, so
+  there is no password and `/auth/login` cannot succeed for them. That absence is the guarantee,
+  not a branch someone has to remember. They hold roles like anyone else, appear under
+  Settings → Access → Accounts, and only an admin (`users.manage`) mints their tokens
+  (`POST /users/{id}/tokens`).
+- **Personal tokens** belong to a person and act as them. Only that person mints them, from
+  `/account` (`POST /auth/tokens`), and only with `tokens.personal`. An admin can list and revoke
+  anyone's tokens but cannot mint one for a person: that would be impersonation with extra steps,
+  since everything it did would read as theirs.
+
+**What a token may do** is its own scope rows (`ApiTokenPermission`, shaped like `RolePermission`)
+**intersected with the owner's role permissions at the time of the request**. The grid stays the
+ceiling. An edit there narrows every token immediately, and a token never outlives its owner
+losing a right. Minting refuses scopes the owner doesn't currently hold, so a token never lists
+rights it can't use. A refusal caused by the scope rather than the roles says so (`tokenScope`),
+because the fix is a new token rather than a word with an admin.
+
+**Resolution.** If a bearer header is present it is the **only** credential considered; cookies
+are ignored, so a script run from a signed-in browser is exactly as capable as its token. Lookup
+is by SHA-256, like sessions; the plaintext is shown once at creation and never stored. A bearer
+that names no valid token (unknown, expired, revoked, or the owner deactivated) gets a **401 from
+middleware before any endpoint runs**. It is never quietly downgraded to Anonymous, which would
+let a broken key keep "working" on anonymous-permitted routes until something important failed.
+Events logged by a token record the owner in `CreatedByUserId`.
+
+**What a token can never do**, whatever its scope:
+- Anything under `.RequireAuthenticated()`: password change, sessions, listing own tokens.
+  Those are the account holder's self-service routes.
+- Anything marked `.SessionOnly()`, i.e. both minting routes. A token that could mint tokens could
+  outlive its own revocation by leaving a successor behind.
+
+**Expiry.**
+- Personal tokens **must** expire, at most `Auth__PersonalTokenMaxDays` (default 365) out; the UI
+  defaults to 90 days. They act as a person, the account more likely to be phished or shared.
+- Service-account tokens may be open-ended: an integration silently breaking on a forgotten date
+  is its own outage.
+- Expired rows are kept, not deleted on sight like sessions, so the owner sees the token lapsed
+  rather than it vanishing.
+- Changing your password revokes your personal tokens, for the same reason it signs out your
+  other sessions.
+
+Tokens work through the web port (`/api/…`): the proxy forwards `Authorization`, which matters
+because the NAS deploy publishes nothing else.
 
 ## Label tokens
 
@@ -169,6 +220,9 @@ Session cookies are `HttpOnly`, `Path=/`, `SameSite=Lax`, and `Secure` only when
 
 `SameSite=Lax` refuses cross-site POSTs, and that is what now makes `.DisableAntiforgery()` on
 `POST /documents/upload` defensible.
+
+Bearer tokens need no CSRF defence: a browser never attaches an `Authorization` header on its
+own, so a hostile page cannot make one ride along.
 
 ## First run and recovery
 
@@ -232,7 +286,7 @@ not revoke sessions — deactivate the account for that.
 | Role | Grants |
 |---|---|
 | **Admin** (system) | Everything. Cannot lose `users.manage` / `roles.manage`. |
-| **Member** (default for new users) | Everything day-to-day, including deletes and sensitive documents; not `users.manage`, `roles.manage` or `settings.manage`. |
+| **Member** (default for new users) | Everything day-to-day, including deletes and sensitive documents; not `users.manage`, `roles.manage`, `settings.manage`, `tokens.personal` or `api.docs`. |
 | **Viewer** | Read-only: view and browse equipment, history, schedules, storage, parts, documents, categories, links, settings. Not sensitive documents. |
 | **Anonymous** (system) | `equipment.read`, `events.read`, `events.create`, `rules.read` — exactly enough to scan a label, log maintenance and see the result. No browsing. |
 
@@ -250,7 +304,9 @@ handed the inventory.
 | Auth | `GET /auth/me` | public |
 | | `POST /auth/login`, `/auth/logout`, `/auth/setup` | public |
 | | `POST /auth/label-session` | public (holding the label is the credential) |
-| | `POST /auth/password`, `GET/DELETE /auth/sessions` | signed in |
+| | `POST /auth/password`, `GET/DELETE /auth/sessions` | signed in (session, not a token) |
+| | `GET /auth/tokens`, `/auth/tokens/grantable-permissions`, `DELETE /auth/tokens/{id}` | signed in (session, not a token) |
+| | `POST /auth/tokens` | `tokens.personal`, session only |
 | | `GET /auth/label-tokens` | `equipment.list` |
 | | `GET /auth/location-label-tokens` | `storage.read` |
 | | `POST /auth/label-key/rotate` | `settings.manage` |
@@ -287,7 +343,9 @@ handed the inventory.
 | | `POST`, `PUT`, `DELETE` | `links.write` |
 | Settings | `GET /app-settings` | `settings.read` |
 | | `PUT /app-settings` | `settings.manage` |
-| Users | all `/users` | `users.manage` |
+| Users | all `/users`, incl. `GET /users/{id}/tokens`, `/grantable-permissions`, `DELETE …/tokens/{id}` | `users.manage` |
+| | `POST /users/{id}/tokens` (service accounts only) | `users.manage`, session only |
+| Docs | `/swagger/*` (middleware, both ports) | `api.docs` |
 | Roles | all `/roles`, `PUT /roles/permissions` | `roles.manage` |
 
 ### Sensitive documents
@@ -305,6 +363,6 @@ editable but inert since the document-management work.
 - **External identity providers.** The seam is in place (`UserIdentity`, `Session.UserIdentityId`,
   `Role.IsDefaultForNewUsers` for just-in-time provisioning) but no provider is wired.
 - **Rate limiting on sign-in.** LAN-only for now; worth adding before this is ever exposed.
-- **`/swagger`** stays on the `SWAGGER_PROXY` env toggle rather than a permission — a
-  deploy-time decision that works today. Revisit now that the grid exists.
+- **Rate limiting on bearer tokens.** Unnecessary for guessing (256 random bits), but nothing
+  stops a misbehaving script hammering the NAS.
 - **Sensitive-category gating beyond documents.** The flag only affects documents.

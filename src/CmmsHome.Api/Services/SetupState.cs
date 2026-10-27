@@ -1,4 +1,5 @@
 using CmmsHome.Api.Data;
+using CmmsHome.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Services;
@@ -23,7 +24,8 @@ public class SetupState
     {
         if (_complete) return true;
 
-        if (await db.Users.AnyAsync())
+        // People only: a service account cannot finish setup, since it cannot sign in.
+        if (await db.Users.AnyAsync(u => u.Kind == UserKind.Person))
             _complete = true;
 
         return _complete;

@@ -12,8 +12,19 @@ namespace CmmsHome.Api.Services;
 public class CurrentActor
 {
     // Null when nobody is signed in; the request is then evaluated against the Anonymous role.
+    // For a bearer token this is the token's owner — a service account or a person — so
+    // whatever the token does is attributed to that account.
     public User? User { get; init; }
     public Guid? SessionId { get; init; }
+
+    // Set when the caller authenticated with `Authorization: Bearer`. Permissions are then
+    // already narrowed to the token's scope.
+    public Guid? ApiTokenId { get; init; }
+
+    // A bearer header was sent but named no valid token. Never quietly downgraded to
+    // Anonymous: that could succeed on an anonymous-permitted route and hide a broken or
+    // revoked key until something more important failed. The middleware answers 401.
+    public bool InvalidBearer { get; init; }
 
     public IReadOnlySet<string> Permissions { get; init; } = new HashSet<string>();
 
@@ -28,6 +39,7 @@ public class CurrentActor
     public bool SetupRequired { get; init; }
 
     public bool IsAuthenticated => User is not null;
+    public bool IsApiToken => ApiTokenId is not null;
     public bool IsLabelScoped => ScopedEquipmentId is not null || ScopedStorageLocationId is not null;
 
     public bool Can(string permission) => Permissions.Contains(permission);
@@ -44,6 +56,10 @@ public class CurrentActor
         !IsLabelScoped || (equipmentId == ScopedEquipmentId && storageLocationId == ScopedStorageLocationId);
 
     public static readonly CurrentActor None = new();
+
+    // Permissions this actor's *account* holds, before a token narrowed them. Only set for
+    // token callers, so a refusal can say whether the token or the roles were the reason.
+    public IReadOnlySet<string>? OwnerPermissions { get; init; }
 }
 
 // Resolves the actor for the current request, once.
@@ -72,6 +88,12 @@ public class ActorAccessor(IHttpContextAccessor http, CmmsDbContext db, LabelSig
         // No accounts at all: first run. Reported so the client can send the operator to
         // /setup instead of a login form they cannot satisfy.
         var setupRequired = !await setup.IsCompleteAsync(db);
+
+        // A bearer token, when present, is the only credential considered: a script that
+        // happens to run in a browser with a session cookie must still be exactly as
+        // capable as its token says, no more.
+        if (BearerToken(ctx) is { } bearer)
+            return _resolved = await ResolveTokenAsync(bearer, setupRequired);
 
         var session = await LoadSessionAsync(ctx);
         if (session is not null)
@@ -113,6 +135,59 @@ public class ActorAccessor(IHttpContextAccessor http, CmmsDbContext db, LabelSig
             ScopedStorageLocationId = scope is { Kind: LabelTargetKind.StorageLocation } ? scope.Value.Id : null,
             SetupRequired = setupRequired,
         };
+    }
+
+    private async Task<CurrentActor> ResolveTokenAsync(string bearer, bool setupRequired)
+    {
+        var hash = AuthTokens.Hash(bearer);
+        var token = await db.ApiTokens
+            .Include(t => t.Permissions)
+            .SingleOrDefaultAsync(t => t.TokenHash == hash);
+
+        var user = token is null || token.ExpiresAt is { } at && at <= DateTime.UtcNow
+            ? null
+            : await db.Users.Include(u => u.Roles).SingleOrDefaultAsync(u => u.Id == token.UserId);
+
+        // Unknown, expired, or owned by a deactivated account: all the same 401. Expired rows
+        // are kept rather than deleted here, unlike sessions, so the owner can still see in
+        // their list that the token lapsed instead of it silently vanishing.
+        if (token is null || user is not { IsActive: true })
+            return new CurrentActor { InvalidBearer = true, SetupRequired = setupRequired };
+
+        if (token.LastUsedAt is not { } used || DateTime.UtcNow - used > LastSeenPrecision)
+        {
+            token.LastUsedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        // The owner's roles are the ceiling, read fresh like any session's, so a grid edit
+        // binds every token at once. The scope rows only ever narrow that.
+        var owner = await PermissionsForRolesAsync(user.Roles.Select(r => r.Id));
+        var effective = owner.ToHashSet();
+        effective.IntersectWith(token.Permissions.Select(p => p.Permission));
+
+        return new CurrentActor
+        {
+            User = user,
+            ApiTokenId = token.Id,
+            Permissions = effective,
+            OwnerPermissions = owner,
+            SetupRequired = setupRequired,
+        };
+    }
+
+    // The token from `Authorization: Bearer <token>`, or null when there is no bearer header.
+    // Other schemes are ignored rather than rejected: nothing here issues them, and refusing
+    // would break a reverse proxy that adds its own Basic auth in front of the app.
+    public static string? BearerToken(HttpContext ctx)
+    {
+        var header = ctx.Request.Headers.Authorization.ToString();
+        const string scheme = "Bearer ";
+        if (!header.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)) return null;
+
+        var token = header[scheme.Length..].Trim();
+        // An empty bearer is still a bearer: answer 401 rather than treating it as absent.
+        return token;
     }
 
     // Permissions for a specific user, ignoring the current request's actor.

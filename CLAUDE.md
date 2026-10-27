@@ -36,7 +36,7 @@ dotnet ef database update --project src/CmmsHome.Api
 
 - API Swagger UI: `http://localhost:8080/swagger`, or `http://localhost:3000/swagger`
   (proxied through the web app — the only route in a deployment, where the API port
-  isn't published; `SWAGGER_PROXY=false` disables it)
+  isn't published). Needs the `api.docs` permission
 - Frontend: `http://localhost:3000`
 
 ## Backend Architecture (`src/CmmsHome.Api/`)
@@ -58,13 +58,15 @@ Single-project Minimal API. No service layer — endpoints call `CmmsDbContext` 
 │   ├── User.cs / UserIdentity.cs  # account; credentials split out for future IdPs
 │   ├── Role.cs / UserRole.cs / RolePermission.cs  # the grid; Anonymous is a Role
 │   ├── Session.cs           # server-side opaque session (only the token's hash is stored)
+│   ├── ApiToken.cs / ApiTokenPermission.cs  # bearer tokens + their scope rows
 │   └── ServerSecret.cs      # single-row label signing key; NOT seeded, generated on use
 ├── Services/                # The few cross-cutting concerns (no service layer otherwise)
 │   ├── Permissions.cs       # the permission catalogue — the grid renders whatever is here
 │   ├── CurrentActor.cs      # who is calling + ActorAccessor (per-request, uncached)
-│   ├── RequirePermission.cs # .RequirePermission / .AllowLabelScope / .RequireAuthenticated / .Public
+│   ├── RequirePermission.cs # .RequirePermission / .AllowLabelScope / .RequireAuthenticated / .SessionOnly / .Public
 │   ├── EndpointAudit.cs     # FAILS STARTUP on any unguarded endpoint
 │   ├── AccountService.cs    # password hashing, session issue, cookie options
+│   ├── ApiTokenService.cs   # mint/validate/list API tokens (service + personal)
 │   ├── LabelSigner.cs       # printed-label tokens + the scope a scan grants
 │   └── AdminReset.cs        # Auth__ResetAdmin recovery hatch, applied at startup
 └── Endpoints/               # One static class per resource; extension methods on WebApplication
@@ -88,6 +90,7 @@ Next.js 16 App Router. All pages are `'use client'` with client-side data fetchi
 A second proxy (`app/swagger/[[...path]]/route.ts`) does the same for the API's Swagger
 UI + OpenAPI document, so the docs are reachable on the single published web port —
 deployments don't publish the API's port at all. See "Swagger through the web port" below.
+The `/api` proxy forwards `Authorization`, so API tokens work through the web port.
 
 ```
 ├── lib/types.ts             # TypeScript types matching backend models exactly
@@ -98,11 +101,12 @@ deployments don't publish the API's port at all. See "Swagger through the web po
 ├── components/StorageLocationPicker.tsx # typeahead + breadcrumb place picker
 ├── components/ManagedNameList.tsx # generic CRUD list over an {id,name} lookup table
 ├── components/ExternalLinkList.tsx # add/edit/delete web links for one equipment or part
+├── components/ApiTokenManager.tsx  # list/mint/revoke API tokens (Access → Accounts, /account)
 └── app/
     ├── layout.tsx           # Root layout: PWA meta, BottomNav
     ├── page.tsx             # Dashboard: overdue/upcoming rules + recent events
     ├── api/[...path]/route.ts     # proxy → API_URL, strips the /api prefix
-    ├── swagger/[[...path]]/route.ts # proxy → API_URL/swagger (SWAGGER_PROXY toggle)
+    ├── swagger/[[...path]]/route.ts # proxy → API_URL/swagger (api.docs gate lives in the API)
     ├── labels/page.tsx      # print QR labels for equipment/places (batch or single)
     ├── equipment/[id]/
     │   ├── page.tsx         # Universal detail: info, lending, schedule, history, QR, parts, links
@@ -113,7 +117,7 @@ deployments don't publish the API's port at all. See "Swagger through the web po
     ├── storage/            # nestable tree + /storage/{id} contents
     ├── settings/           # config hub (depth cap, location display) + /settings/categories
     │                       #   (/categories redirects here — category lists are settings)
-    ├── account/            # own details + signed-in devices; /account/password (self-service)
+    ├── account/            # own details, devices, personal API tokens; /account/password
     └── scan/page.tsx        # Camera QR scanner (html5-qrcode, dynamic import)
 ```
 
@@ -127,7 +131,6 @@ deployments don't publish the API's port at all. See "Swagger through the web po
   for a place's own heading/label, which always shows its full lineage. Pages needing either
   must load `api.storageLocations.list()` (the flat tree) alongside their own data
 - `API_URL` (server-side, read by the `/api` proxy route) defaults to `http://localhost:8080`; `NEXT_PUBLIC_QR_BASE_URL` overrides the host baked into printed QR codes when behind a reverse proxy
-- `SWAGGER_PROXY` (server-side, default on) gates the `/swagger` proxy — see below
 - `html5-qrcode` is dynamically imported in `scan/page.tsx` to avoid SSR issues
 
 ### Swagger through the web port
@@ -148,11 +151,13 @@ are load-bearing:
   ignored unless it's a relative path, and absent when the API is reached directly — so a
   direct `:8080/swagger` still emits no `servers` and works unchanged.
 
-`SWAGGER_PROXY=false` (`0`/`off`/`no` also count) makes every `/swagger` path 404. Read at
-module load, so changing it needs a container restart. It gates *discoverability*, not access:
-Try-It-Out carries the caller's session cookie, so it is bounded by their own permissions like
-any other client. Whether `/swagger` should itself require a permission rather than an env
-toggle is still open — see the end of `docs/authentication.md`.
+**Gated by the `api.docs` permission** (Admin only by default), enforced by a `/swagger`
+middleware branch in `Program.cs` — Swashbuckle is middleware, so neither the per-route filters
+nor the startup audit see it. Being in the API, it covers a direct `:8080/swagger` too. The proxy
+forwards the cookie and `Authorization`, and turns a 401 on `index.html` into a redirect to
+`/login?next=/swagger/index.html`. Try-it-out hits the live data with the caller's own rights, or
+with a pasted API token (the spec declares a Bearer scheme). This replaced the old
+`SWAGGER_PROXY` env toggle.
 
 ## Data Model
 
@@ -167,12 +172,14 @@ MaintenanceRule     { Id, EquipmentId? | StorageLocationId?, Name?, ScheduleType
                       NextDueAt?, DueWindowValue, DueWindowUnit, ReminderLeadValue, ReminderLeadUnit }
 ExternalLink        { Id, Url*, Label*, EquipmentId? | PartId?, CreatedAt }   # user-entered web link
 AppSettings         { Id=1, StorageMaxDepth, PathShorteningMode(Full|LastNSegments), PathShorteningSegments }
-User                { Id, Username*, DisplayName?, IsActive, CreatedAt, LastLoginAt? }   # no credentials here
+User                { Id, Username*, DisplayName?, Kind(Person|Service), IsActive, CreatedAt, LastLoginAt? }   # no credentials here
 UserIdentity        { Id, UserId, Provider, Subject, PasswordHash?, CreatedAt, LastUsedAt? }
 Role                { Id, Name*, IsSystem, IsAnonymous, IsDefaultForNewUsers, SortOrder }
 UserRole            { UserId, RoleId }              # m:n — a user holds the union of their roles' grants
 RolePermission      { RoleId, Permission }          # grant rows; absence = deny, no deny rows exist
 Session             { Id, UserId, TokenHash, UserIdentityId?, CreatedAt, ExpiresAt, LastSeenAt, UserAgent? }
+ApiToken            { Id, UserId, Name*, TokenHash, Hint, CreatedAt, CreatedByUserId?, ExpiresAt?, LastUsedAt? }
+ApiTokenPermission  { ApiTokenId, Permission }      # a token's scope; narrows, never widens, the owner's roles
 ServerSecret        { Id=1, LabelSigningKey, RotatedAt }   # never serialized by any endpoint
 ```
 
@@ -251,7 +258,9 @@ Auth:        GET /auth/me  |  POST /auth/login, /auth/logout, /auth/setup, /auth
              |  POST /auth/label-session  |  GET /auth/label-tokens (?equipment_id=)
              |  GET /auth/location-label-tokens (?storage_location_id=)
              |  POST /auth/label-key/rotate  |  GET /auth/sessions  |  DELETE /auth/sessions/{id}
-Users:       CRUD /users
+             |  GET/POST /auth/tokens  |  GET /auth/tokens/grantable-permissions  |  DELETE /auth/tokens/{id}
+Users:       CRUD /users  |  GET/POST /users/{id}/tokens  |  DELETE /users/{id}/tokens/{tokenId}
+             |  GET /users/{id}/grantable-permissions
 Roles:       CRUD /roles  |  PUT /roles/permissions   # the whole grid, roleId -> permission keys
 ```
 
@@ -429,6 +438,14 @@ bite you if you don't know them:
 - **Permissions are read from the DB every request** (`ActorAccessor`, memoised per request),
   following `GetAppSettingsAsync`'s precedent — so a grid edit is in force immediately,
   including for existing sessions. Don't add a cache without solving invalidation.
+- **API tokens are a fourth caller** (`Authorization: Bearer cmms_…`), owned by a *service
+  account* (`User.Kind = Service`: no `UserIdentity`, so no way to sign in; minted by admins) or
+  a person (personal tokens, `tokens.personal`, mandatory expiry ≤ `Auth__PersonalTokenMaxDays`).
+  Effective rights = owner's **current** role permissions ∩ the token's scope rows. A bearer
+  header beats cookies; an invalid one is a **401 from middleware**, never Anonymous. Tokens
+  can't reach `.RequireAuthenticated()` routes or `.SessionOnly()` ones (minting), so no token
+  mints tokens. Service accounts may hold Admin but never count as the last admin. Details:
+  `docs/authentication.md` → API tokens.
 - **Sessions are opaque tokens with only their SHA-256 stored**, not encrypted cookie tickets:
   DataProtection's key ring lives in the container filesystem and would sign everyone out on
   every NAS rebuild. Revocation is a row delete.

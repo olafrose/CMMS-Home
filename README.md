@@ -75,8 +75,9 @@ documents share path.
 
 Only the web port is published there — the API and DB stay on Docker's internal network,
 with the web container proxying `/api` and `/swagger` through to the API. So the docs live
-at `http://<NAS-IP>:<WEB_PORT>/swagger`; set `SWAGGER_PROXY=false` to take them off the
-port.
+at `http://<NAS-IP>:<WEB_PORT>/swagger`, for accounts whose roles grant "View API
+documentation" (`api.docs`, Admin only by default). Scripts reach the API at
+`http://<NAS-IP>:<WEB_PORT>/api/…` with an API token — see `docs/authentication.md`.
 
 ## Local development
 

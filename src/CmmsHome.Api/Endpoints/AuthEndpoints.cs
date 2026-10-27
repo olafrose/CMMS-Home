@@ -99,6 +99,10 @@ public static class AuthEndpoints
                 .Where(s => s.UserId == user.Id && s.Id != actor.SessionId)
                 .ExecuteDeleteAsync();
 
+            // And their personal tokens, for the same reason: whoever knew the old password
+            // could have minted one, and it would outlive the change just as a session would.
+            await db.ApiTokens.Where(t => t.UserId == user.Id).ExecuteDeleteAsync();
+
             return Results.NoContent();
         }).RequireAuthenticated();
 
@@ -209,6 +213,40 @@ public static class AuthEndpoints
 
             return deleted > 0 ? Results.NoContent() : Results.NotFound();
         }).RequireAuthenticated();
+
+        // Personal API tokens: the caller's own, acting as them, narrowed to a scope. Listing
+        // and revoking need no permission — like sessions, an admin taking away the right to
+        // mint must never take away the ability to revoke what was already minted.
+        group.MapGet("/tokens", async (ActorAccessor accessor, ApiTokenService tokens) =>
+        {
+            var actor = await accessor.GetAsync();
+            return Results.Ok(await tokens.ListAsync(actor.User!.Id));
+        }).RequireAuthenticated();
+
+        group.MapGet("/tokens/grantable-permissions", async (ActorAccessor accessor, ApiTokenService tokens) =>
+        {
+            var actor = await accessor.GetAsync();
+            return Results.Ok(await tokens.GrantableAsync(actor.User!.Id));
+        }).RequireAuthenticated();
+
+        group.MapPost("/tokens", async (MintTokenDto dto, ActorAccessor accessor, ApiTokenService tokens) =>
+        {
+            var actor = await accessor.GetAsync();
+            var (token, row, errors) = await tokens.MintAsync(actor.User!, dto, actor.User!.Id);
+            if (errors is not null) return Results.ValidationProblem(errors);
+
+            return Results.Created($"/auth/tokens/{row!.Id}", new { token, apiToken = ApiTokenService.Dto(row) });
+        }).RequirePermission(Permissions.TokensPersonal).SessionOnly();
+
+        group.MapDelete("/tokens/{id:guid}", async (Guid id, CmmsDbContext db, ActorAccessor accessor) =>
+        {
+            var actor = await accessor.GetAsync();
+            var deleted = await db.ApiTokens
+                .Where(t => t.Id == id && t.UserId == actor.User!.Id)
+                .ExecuteDeleteAsync();
+
+            return deleted > 0 ? Results.NoContent() : Results.NotFound();
+        }).RequireAuthenticated();
     }
 
     // The single shape describing "who am I and what may I do", used by /me, /login and
@@ -240,6 +278,7 @@ public static class AuthEndpoints
                 user.Id,
                 user.Username,
                 user.DisplayName,
+                user.Kind,
                 // For the account page. LastLoginAt is deliberately not served: signing in
                 // is what sets it, so to the user reading it it would always say "just now".
                 user.CreatedAt,
@@ -250,6 +289,9 @@ public static class AuthEndpoints
             permissions,
             labelScopedEquipmentId = actor.ScopedEquipmentId,
             labelScopedStorageLocationId = actor.ScopedStorageLocationId,
+            // So a script can confirm what it is holding: whose token, and that `permissions`
+            // above is already narrowed to the token's scope.
+            viaApiToken = actor.IsApiToken,
         };
     }
 }

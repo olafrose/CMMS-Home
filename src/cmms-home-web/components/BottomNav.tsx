@@ -102,7 +102,10 @@ export default function BottomNav() {
   const manageActive = manageLinks.some(l => pathname.startsWith(l.href))
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 flex items-center safe-pb">
+    // z-30: above anything a page positions (sticky grid columns, dropdowns, Save bars use
+    // z-10/z-20 and would otherwise paint over the bar as they scroll under it), below the
+    // full-screen document preview (z-50).
+    <nav className="fixed bottom-0 inset-x-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 flex items-center safe-pb">
       {tabs.map((tab) => {
         const active = tab.href === '/'
           ? pathname === '/'

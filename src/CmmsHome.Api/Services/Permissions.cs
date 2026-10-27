@@ -61,6 +61,8 @@ public static class Permissions
 
     public const string UsersManage = "users.manage";
     public const string RolesManage = "roles.manage";
+    public const string TokensPersonal = "tokens.personal";
+    public const string ApiDocs = "api.docs";
 
     public const string GroupEquipment = "Equipment";
     public const string GroupEvents = "Maintenance history";
@@ -159,6 +161,14 @@ public static class Permissions
         new(RolesManage, GroupAdmin, "Manage roles and rights",
             "Add and remove roles, and edit this grid.",
             AllowedForAnonymous: false, AlwaysOnForAdmin: true),
+        new(TokensPersonal, GroupAdmin, "Create personal API tokens",
+            "Mint expiring tokens for your own scripts, limited to what your roles allow. "
+            + "Service-account tokens are covered by Manage users instead.",
+            AllowedForAnonymous: false),
+        new(ApiDocs, GroupAdmin, "View API documentation",
+            "Open the Swagger UI and download the OpenAPI document. Try-it-out runs against "
+            + "the live data, with the caller's own rights.",
+            AllowedForAnonymous: false),
     ];
 
     public static readonly IReadOnlySet<string> AllKeys = All.Select(p => p.Key).ToHashSet();
