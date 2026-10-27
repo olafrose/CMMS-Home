@@ -2,7 +2,8 @@
 
 A mobile-first Progressive Web App for homeowners to track household appliances and
 machines, log maintenance in **≤10 seconds** via QR codes, and stay on top of
-due/overdue service. Single-user, no login — built for a home network.
+due/overdue service. Multi-user, with a rights grid you control — including whether
+scanning a label can still log maintenance without signing in. Built for a home network.
 
 > CMMS = Computerized Maintenance Management System, scaled down for the home.
 
@@ -34,6 +35,12 @@ due/overdue service. Single-user, no login — built for a home network.
 - **External links** — clickable manual/spec/reorder URLs on items and parts.
 - **Settings** — server-side configuration (storage depth, how location paths are
   abbreviated, the category lists), so it follows you across devices.
+- **Accounts and a rights grid** — users, roles, and a permission matrix you edit at
+  *Settings → Access*. "Not signed in" is a column in that grid, so **you** decide whether a
+  scanned label can log maintenance without an account — the fast QR flow and a fully locked
+  down app are both a checkbox away. Printed labels carry a signed token so an anonymous scan
+  is authorised for that one item and nothing else.
+  See [`docs/authentication.md`](docs/authentication.md).
 
 ## Tech stack
 
@@ -130,7 +137,15 @@ Documents:        GET /documents (?status=, ?equipment_id=, ?event_id=)  |  GET 
 ExternalLinks:    POST/GET /external-links (?equipment_id=, ?part_id=)  |  PUT/DELETE /external-links/{id}
 AppSettings:      GET/PUT /app-settings        # singleton, no /{id}
 Categories:       CRUD /categories, /part-categories, /document-categories
+Auth:             GET /auth/me  |  POST /auth/login, /auth/logout, /auth/setup, /auth/password
+                  |  POST /auth/label-session  |  GET /auth/label-tokens  |  POST /auth/label-key/rotate
+Users / Roles:    CRUD /users  |  CRUD /roles  |  PUT /roles/permissions   # the grid, saved whole
 ```
+
+Every route requires a permission; startup **fails** if one is added without either a
+permission or an explicit opt-out, so the grid cannot quietly grow a hole. The full
+endpoint→permission table is in [`docs/authentication.md`](docs/authentication.md), and
+`scripts/auth-smoke.sh` asserts the whole matrix against a running stack.
 
 Full details in Swagger at http://localhost:8080/swagger, or `/swagger` on the web port.
 
@@ -139,13 +154,22 @@ Full details in Swagger at http://localhost:8080/swagger, or `/swagger` on the w
 Implemented: the core MVP (equipment, QR flow, quick logging, rules, dashboard),
 spare parts, the unified storage hierarchy, printable labels, document management
 (NAS indexing, classification, in-app uploads and managed foldering), external links,
-purchase/warranty tracking, and server-side settings.
+purchase/warranty tracking, server-side settings, and authentication with a
+role/permission grid.
 
 Reminders are surfaced in-app only — there is no push or email delivery yet, so due
 maintenance and expiring warranties are seen by opening the dashboard or the item.
 
-**Out of scope:** authentication, multi-user, Home Assistant integration,
-OBD2/vehicle diagnostics, operating-hours tracking, and AI features.
+**First run:** the app sends you to `/setup` to create the first administrator. Note that
+until you do, `/setup` is open to anyone who can reach the app — on a LAN that window is
+short, but to close it entirely set `RESET_ADMIN` before the first boot (see
+`deploy/.env.example`). **Upgrading an existing install:** labels already printed have no
+signed token, so anonymous scans of them stop working until you reprint from `/labels`;
+signed-in users are unaffected.
+
+**Out of scope:** external identity providers (the seam exists, nothing is wired), Home
+Assistant integration, OBD2/vehicle diagnostics, operating-hours tracking, and AI features.
+There is no rate limiting on sign-in yet, so keep this on a LAN or VPN.
 
 Full requirements: [`home_maintenance_mvp_requirements.md`](home_maintenance_mvp_requirements.md).
 Contributor/architecture notes for AI tooling: [`CLAUDE.md`](CLAUDE.md).

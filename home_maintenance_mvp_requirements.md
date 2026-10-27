@@ -11,9 +11,16 @@ Ziele:
 
 Mobile-first PWA.
 
-## 2. Nutzerrolle
-- Einzelner Nutzer
-- Kein Login im MVP
+## 2. Nutzerrollen
+- Mehrbenutzerbetrieb mit Rollen und einem Rechte-Raster, das der Admin selbst pflegt
+  (`/settings/access`). Vorkonfiguriert: Admin, Member, Viewer, Anonymous — eigene Rollen
+  können ergänzt werden.
+- `Anonymous` ist eine echte Rolle, keine Sonderbehandlung im Code: sie entscheidet, ob das
+  Scannen eines gedruckten QR-Labels ohne Anmeldung eine Wartung erfassen darf. Genau das
+  hält den <10-Sekunden-Ablauf (3.7) am Leben, ohne die Inventarliste preiszugeben.
+- Umfang des anonymen Zugriffs: das Label trägt eine Signatur (`?t=`), die nur für *dieses*
+  eine Gerät gilt. Das Raster sagt *was*, das Token sagt *wofür*.
+- Details: `docs/authentication.md`.
 
 ## 3. Kernfunktionen
 
@@ -72,8 +79,8 @@ Wenn last_done_at + interval_days < heute => überfällig
 - Speichern in <10 Sekunden
 
 ## 4. Nicht im MVP
-- Login / Auth
-- Multi-User
+- Externe Identity Provider (OIDC/SSO) — die Naht dafür existiert (`UserIdentity`),
+  angebunden ist noch keiner
 - Home Assistant Integration
 - OBD2
 - Meter / Betriebsstunden
@@ -250,6 +257,9 @@ POST /documents/:id/ignore
 POST /documents/scan               # Rescan auslösen
 ```
 
-### 11.5 Hinweis
-Datenschutz ist kein Thema: Die App ist single-tenant; alle Dokumente sind im gesamten
-Haushalt sichtbar (konsistent mit der bestehenden Auth-losen Ausrichtung).
+### 11.5 Hinweis (überholt)
+Ursprünglich als single-tenant geplant: alle Dokumente im gesamten Haushalt sichtbar.
+Mit der Authentifizierung greift `DocumentCategory.Sensitive` nun wirklich: ohne das Recht
+`documents.read_sensitive` sind solche Dokumente nicht nur gesperrt, sondern unsichtbar
+(nicht in Listen, 404 statt 403 beim Abruf — ein 403 würde ihre Existenz bestätigen).
+Receipt und Invoice sind per Default als sensibel eingestuft.

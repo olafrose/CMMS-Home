@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import type { MaintenanceRule } from '@/lib/types'
 
 const EVENT_TYPES = [
@@ -20,40 +20,76 @@ export default function LogMaintenancePage() {
   const [note, setNote] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   // Due-date schedules on this equipment, with an editable next-due date each
   const [dueRules, setDueRules] = useState<MaintenanceRule[]>([])
   const [dueDates, setDueDates] = useState<Record<string, string>>({})
 
+  // The in-flight label-token exchange, or null when we arrived without a token.
+  const labelSession = useRef<Promise<void> | null>(null)
+
   useEffect(() => {
-    api.rules.list(id).then((rs) => {
-      const due = rs.filter((r) => r.scheduleType === 'DueDate')
-      setDueRules(due)
-      setDueDates(Object.fromEntries(
-        due.map((r) => [r.id, r.nextDueAt ? new Date(r.nextDueAt).toISOString().slice(0, 10) : '']),
-      ))
-    }).catch(() => {})
+    // A printed label carries a signed token; trading it for a scope covering this one item
+    // is what lets an anonymous scan save. Read from window rather than useSearchParams to
+    // avoid a Suspense boundary, as /labels does.
+    const token = new URLSearchParams(window.location.search).get('t')
+    // Fired, never awaited on the render path: the form paints from local defaults and stays
+    // one tap from saved, exactly as the rules fetch below always has.
+    const authorised = token
+      ? api.auth.labelSession(id, token).then(() => {}, () => {})
+      : Promise.resolve()
+    labelSession.current = token ? authorised : null
+
+    // Sequenced behind the exchange so a label-scoped scan can read its own schedules.
+    // Without a token this is a microtask, so nothing is delayed for a signed-in user.
+    authorised
+      .then(() => api.rules.list(id))
+      .then((rs) => {
+        const due = rs.filter((r) => r.scheduleType === 'DueDate')
+        setDueRules(due)
+        setDueDates(Object.fromEntries(
+          due.map((r) => [r.id, r.nextDueAt ? new Date(r.nextDueAt).toISOString().slice(0, 10) : '']),
+        ))
+      })
+      .catch(() => {})
   }, [id])
 
   async function handleSave() {
     setSaving(true)
+    setError('')
     try {
+      // Usually already settled while the user was picking a type; awaiting only costs
+      // something on the rare tap that beats the network.
+      if (labelSession.current) await labelSession.current
+
       const event = await api.events.create({
         equipmentId: id,
         type,
         note: note.trim() || undefined,
         occurredAt: new Date(date).toISOString(),
       })
-      // Push any new next-due dates for the equipment's due-date schedules
+
+      // Push any new next-due dates for the equipment's due-date schedules. Deliberately
+      // non-fatal: the event is already stored by now, and someone logging from a scanned
+      // label holds no rules.write — letting that 403 escape would block the navigation and
+      // present a successful save as a failure.
       await Promise.all(dueRules
         .filter((r) => {
           const v = dueDates[r.id]
           const orig = r.nextDueAt ? new Date(r.nextDueAt).toISOString().slice(0, 10) : ''
           return v && v !== orig
         })
-        .map((r) => api.rules.update(r.id, { nextDueAt: new Date(dueDates[r.id]).toISOString() })))
+        .map((r) => api.rules.update(r.id, { nextDueAt: new Date(dueDates[r.id]).toISOString() })
+          .catch(() => {})))
+
       router.push(`/events/${event.id}?equipment_id=${id}`)
-    } catch {
+    } catch (e) {
+      // The save itself failed. Say why when the server told us, so a refusal doesn't read
+      // as the button simply not working.
+      setError(e instanceof ApiError && e.isDenied
+        ? 'Not allowed to log maintenance on this item. Scan its label again, or sign in.'
+        : 'Could not save. Try again.')
       setSaving(false)
     }
   }
@@ -115,6 +151,8 @@ export default function LogMaintenancePage() {
           ))}
         </div>
       )}
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
 
       <button
         onClick={handleSave}

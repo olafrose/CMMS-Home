@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -26,7 +27,7 @@ public static class PartEndpoints
                 q = q.Where(p => p.StorageLocationId == location_id.Value);
 
             return await q.OrderBy(p => p.Name).ToListAsync();
-        });
+        }).RequirePermission(Permissions.PartsList);
 
         group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
@@ -36,7 +37,7 @@ public static class PartEndpoints
                 .Include(p => p.PartCategory)
                 .FirstOrDefaultAsync(p => p.Id == id);
             return part is not null ? Results.Ok(part) : Results.NotFound();
-        });
+        }).RequirePermission(Permissions.PartsRead);
 
         group.MapPost("/", async (CreatePartDto dto, CmmsDbContext db) =>
         {
@@ -60,7 +61,7 @@ public static class PartEndpoints
             await db.SaveChangesAsync();
             await LoadNavProperties(db, part);
             return Results.Created($"/parts/{part.Id}", part);
-        });
+        }).RequirePermission(Permissions.PartsWrite);
 
         group.MapPut("/{id:guid}", async (Guid id, CreatePartDto dto, CmmsDbContext db) =>
         {
@@ -83,7 +84,7 @@ public static class PartEndpoints
             await db.SaveChangesAsync();
             await LoadNavProperties(db, part);
             return Results.Ok(part);
-        });
+        }).RequirePermission(Permissions.PartsWrite);
 
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
@@ -92,7 +93,7 @@ public static class PartEndpoints
             db.Parts.Remove(part);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        }).RequirePermission(Permissions.PartsDelete);
     }
 
     private static async Task LoadNavProperties(CmmsDbContext db, Part part)

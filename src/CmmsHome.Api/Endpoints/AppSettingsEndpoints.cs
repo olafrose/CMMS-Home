@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -11,7 +12,8 @@ public static class AppSettingsEndpoints
         // Singleton resource: no /{id} routes, GET and PUT operate on the one row.
         var group = app.MapGroup("/app-settings").WithTags("AppSettings");
 
-        group.MapGet("/", async (CmmsDbContext db) => Results.Ok(await db.GetAppSettingsAsync()));
+        group.MapGet("/", async (CmmsDbContext db) => Results.Ok(await db.GetAppSettingsAsync()))
+            .RequirePermission(Permissions.SettingsRead);
 
         group.MapPut("/", async (SaveAppSettingsDto dto, CmmsDbContext db) =>
         {
@@ -46,7 +48,7 @@ public static class AppSettingsEndpoints
             var overCap = all.Count(s => StorageLocationEndpoints.DepthOf(s.Id, all) > settings.StorageMaxDepth);
 
             return Results.Ok(new { settings, placesOverNewDepthCap = overCap });
-        });
+        }).RequirePermission(Permissions.SettingsManage);
     }
 }
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CMMS@home is a mobile-first Progressive Web App for homeowners to track household appliances and log maintenance history. The target UX is quick maintenance entry (≤10 seconds per log). No authentication in MVP — single-user only.
+CMMS@home is a mobile-first Progressive Web App for homeowners to track household appliances and log maintenance history. The target UX is quick maintenance entry (≤10 seconds per log). Multi-user with a role/permission grid the admin controls — including whether a scanned label can log maintenance without an account (see Authentication).
 
 Full requirements: `home_maintenance_mvp_requirements.md`
 
@@ -54,14 +54,29 @@ Single-project Minimal API. No service layer — endpoints call `CmmsDbContext` 
 │   ├── MaintenanceEvent.cs  # type: maintenance | repair | cleaning | replacement
 │   ├── MaintenanceRule.cs   # computed Status property (Ok/Upcoming/Due/Overdue)
 │   ├── ExternalLink.cs      # web link (url + label) on one Equipment or Part
-│   └── AppSettings.cs       # single-row user config + AbsoluteStorageMaxDepth ceiling
+│   ├── AppSettings.cs       # single-row user config + AbsoluteStorageMaxDepth ceiling
+│   ├── User.cs / UserIdentity.cs  # account; credentials split out for future IdPs
+│   ├── Role.cs / UserRole.cs / RolePermission.cs  # the grid; Anonymous is a Role
+│   ├── Session.cs           # server-side opaque session (only the token's hash is stored)
+│   └── ServerSecret.cs      # single-row label signing key; NOT seeded, generated on use
+├── Services/                # The few cross-cutting concerns (no service layer otherwise)
+│   ├── Permissions.cs       # the permission catalogue — the grid renders whatever is here
+│   ├── CurrentActor.cs      # who is calling + ActorAccessor (per-request, uncached)
+│   ├── RequirePermission.cs # .RequirePermission / .AllowLabelScope / .RequireAuthenticated / .Public
+│   ├── EndpointAudit.cs     # FAILS STARTUP on any unguarded endpoint
+│   ├── AccountService.cs    # password hashing, session issue, cookie options
+│   ├── LabelSigner.cs       # printed-label tokens + the scope a scan grants
+│   └── AdminReset.cs        # Auth__ResetAdmin recovery hatch, applied at startup
 └── Endpoints/               # One static class per resource; extension methods on WebApplication
     ├── EquipmentEndpoints.cs      # CRUD + ?kind=/?location_id=/?on_loan=/?maintained= + checkout/return
     ├── StorageLocationEndpoints.cs # CRUD + move (cycle/depth guards) + /{id}/contents
     ├── EventEndpoints.cs    # POST + GET (filter by ?equipment_id=) + GET/:id
     ├── RuleEndpoints.cs     # POST + GET (filter by ?equipment_id=) + PUT/:id
     ├── ExternalLinkEndpoints.cs # CRUD + ?equipment_id=/?part_id=; http(s)-only URL guard
-    └── AppSettingsEndpoints.cs  # GET/PUT singleton (no /{id})
+    ├── AppSettingsEndpoints.cs  # GET/PUT singleton (no /{id})
+    ├── AuthEndpoints.cs     # login/logout/setup/me/password + label session & tokens
+    ├── UserEndpoints.cs     # account admin; refuses to strand the last admin
+    └── RoleEndpoints.cs     # roles CRUD + PUT /roles/permissions (the grid, saved whole)
 ```
 
 The `Dockerfile` is in `src/CmmsHome.Api/` and uses `.` (repo root) as the build context.
@@ -98,6 +113,7 @@ deployments don't publish the API's port at all. See "Swagger through the web po
     ├── storage/            # nestable tree + /storage/{id} contents
     ├── settings/           # config hub (depth cap, location display) + /settings/categories
     │                       #   (/categories redirects here — category lists are settings)
+    ├── account/            # own details + signed-in devices; /account/password (self-service)
     └── scan/page.tsx        # Camera QR scanner (html5-qrcode, dynamic import)
 ```
 
@@ -133,8 +149,10 @@ are load-bearing:
   direct `:8080/swagger` still emits no `servers` and works unchanged.
 
 `SWAGGER_PROXY=false` (`0`/`off`/`no` also count) makes every `/swagger` path 404. Read at
-module load, so changing it needs a container restart. It gates *discoverability*, not
-access — with no auth yet, anyone who can reach the app can already reach `/api`.
+module load, so changing it needs a container restart. It gates *discoverability*, not access:
+Try-It-Out carries the caller's session cookie, so it is bounded by their own permissions like
+any other client. Whether `/swagger` should itself require a permission rather than an env
+toggle is still open — see the end of `docs/authentication.md`.
 
 ## Data Model
 
@@ -149,7 +167,18 @@ MaintenanceRule     { Id, EquipmentId, Name?, ScheduleType(Interval|DueDate),
                       NextDueAt?, DueWindowValue, DueWindowUnit, ReminderLeadValue, ReminderLeadUnit }
 ExternalLink        { Id, Url*, Label*, EquipmentId? | PartId?, CreatedAt }   # user-entered web link
 AppSettings         { Id=1, StorageMaxDepth, PathShorteningMode(Full|LastNSegments), PathShorteningSegments }
+User                { Id, Username*, DisplayName?, IsActive, CreatedAt, LastLoginAt? }   # no credentials here
+UserIdentity        { Id, UserId, Provider, Subject, PasswordHash?, CreatedAt, LastUsedAt? }
+Role                { Id, Name*, IsSystem, IsAnonymous, IsDefaultForNewUsers, SortOrder }
+UserRole            { UserId, RoleId }              # m:n — a user holds the union of their roles' grants
+RolePermission      { RoleId, Permission }          # grant rows; absence = deny, no deny rows exist
+Session             { Id, UserId, TokenHash, UserIdentityId?, CreatedAt, ExpiresAt, LastSeenAt, UserAgent? }
+ServerSecret        { Id=1, LabelSigningKey, RotatedAt }   # never serialized by any endpoint
 ```
+
+`MaintenanceEvent.CreatedByUserId` is nullable and stays null for anonymous scans and every
+row predating auth — both render as "—" rather than being backfilled to a fiction. Deleting a
+user nulls it rather than cascading: the maintenance history is the point of the app.
 
 `Equipment` is the unified durable-item table (Asset + Tool merged). `Kind` is a
 *lens* only: any equipment can be located, maintained (Rules/Events), and lent
@@ -218,7 +247,18 @@ Documents:   GET /documents (?status=, ?equipment_id=, ?event_id=, ?part_id=)  |
 DocumentCategories: CRUD /document-categories
 ExternalLinks: POST/GET /external-links (?equipment_id=, ?part_id=)  |  PUT/DELETE /external-links/{id}
 AppSettings: GET/PUT /app-settings          # singleton — no /{id}; PUT also returns placesOverNewDepthCap
+Auth:        GET /auth/me  |  POST /auth/login, /auth/logout, /auth/setup, /auth/password
+             |  POST /auth/label-session  |  GET /auth/label-tokens (?equipment_id=)
+             |  POST /auth/label-key/rotate  |  GET /auth/sessions  |  DELETE /auth/sessions/{id}
+Users:       CRUD /users
+Roles:       CRUD /roles  |  PUT /roles/permissions   # the whole grid, roleId -> permission keys
 ```
+
+**Every route carries a permission.** `.RequirePermission(Permissions.X)` is attached per
+route (never per group — a group default would silently cover a route added later), and
+`app.AuditPermissionCoverage()` **fails startup** if any endpoint has neither a permission nor
+an explicit `.Public("why")`/`.RequireAuthenticated()`. Full endpoint→permission table:
+`docs/authentication.md`.
 
 ## Documents
 
@@ -240,8 +280,9 @@ equipment's document list would then silently mix direct and inherited paperwork
 way to tell them apart. Validation counts the set targets rather than comparing them
 pairwise — "both set / neither set" stopped scaling at three.
 
-`DocumentCategory` is a managed entity (`Name`, `Sensitive`, `Color`); `Sensitive`
-is stored but unenforced until auth exists.
+`DocumentCategory` is a managed entity (`Name`, `Sensitive`, `Color`). `Sensitive` is
+enforced as a query filter: without `documents.read_sensitive` those documents are absent
+from lists and 404 (not 403 — that would confirm they exist) on fetch and download.
 
 **Managed foldering (Phase 2, `Documents__ManagedFoldering`):** the app owns two
 write zones under the root — `inbox/` (uploads land here via `POST /documents/upload`)
@@ -314,9 +355,10 @@ not maintenance ownership. Picked with `EquipmentMultiSelect`. `ToolCategory` fo
 
 ## Settings
 
-`/settings` is the config hub and the app's only persisted user configuration —
-everything else is env-var-driven or (for genuinely device-specific print preferences,
-`labels.design` / `labels.formatId`) localStorage. It owns:
+`/settings` is the config hub and the app's only *server-side* user configuration —
+everything else is env-var-driven, or localStorage for the genuinely device-specific:
+print preferences (`labels.design` / `labels.formatId`) and the theme (`theme`, via
+`next-themes`). It owns:
 
 - **Storage** — `StorageMaxDepth`.
 - **Location display** — `PathShorteningMode` + `PathShorteningSegments`, previewed live
@@ -328,11 +370,63 @@ everything else is env-var-driven or (for genuinely device-specific print prefer
 Rows link out to `/labels`, `/storage` and `/documents`, which stay content pages in the
 "More" menu — Settings links to them without owning them.
 
+**Theme deliberately does NOT live here.** It is a property of the device, not the account:
+"Auto" follows the phone's own night mode, which a shared server value could only fight, and
+an anonymous label-scanner has no account for a server-side preference to hang off. It lives
+in the account popover in `BottomNav` as a three-state Light/Dark/Auto picker — three states
+because a light/dark flip-flop can never return to "follow the device", which made the default
+unreachable the first time anyone touched it. It was moved out of the tab bar because a
+control you set once was holding a permanent slot in the app's scarcest space.
+
 Settings live server-side (not localStorage) so they follow the user across devices, and
 so the deferred reminder/notification feature can read the same path-formatting policy;
 `Services/LocationPathFormatter.cs` is the C# twin of `lib/storage.ts`'s formatting,
 written for that consumer and not yet wired to an endpoint.
 
+## Authentication and the rights grid
+
+Full design and the endpoint→permission table: `docs/authentication.md`. The parts that will
+bite you if you don't know them:
+
+- **"Not signed in" is a Role, not a code path.** `Anonymous` is a row in the `Roles` table
+  with `IsAnonymous`, and every request without a session is evaluated against it. That is what
+  makes "can a scanned label log maintenance without an account?" a checkbox in
+  `/settings/access` rather than a branch in the code. Seeded with `equipment.read`,
+  `events.read`, `events.create`, `rules.read` — the quick-log and nothing else.
+- **The grid says *what*, the label token says *which*.** A printed QR carries
+  `?t=HMAC(LabelSigningKey, "equipment:{id}")[..16]`, exchanged at `POST /auth/label-session`
+  for a 2h signed cookie naming one item. Routes a scan may reach are marked
+  `.AllowLabelScope()` and must call `actor.MayTouchEquipment(id)` themselves — the filter
+  can't know if the id is in the route, query or body. Everything else refuses a label-scoped
+  caller outright.
+- **Credentials live in `UserIdentity`, not on `User`** (`Provider`/`Subject`, `"local"` for a
+  password). Adding an identity provider later is an insert plus a callback, not a migration of
+  the user table. Roles hang off `User` and are indifferent to how someone signed in.
+- **Permissions are read from the DB every request** (`ActorAccessor`, memoised per request),
+  following `GetAppSettingsAsync`'s precedent — so a grid edit is in force immediately,
+  including for existing sessions. Don't add a cache without solving invalidation.
+- **Sessions are opaque tokens with only their SHA-256 stored**, not encrypted cookie tickets:
+  DataProtection's key ring lives in the container filesystem and would sign everyone out on
+  every NAS rebuild. Revocation is a row delete.
+- **Three guards stop an admin locking everyone out** — locked cells in the grid, a refusal in
+  `PUT /roles/permissions`, and `Permissions.AdminAlwaysOn` re-added in `ActorAccessor`
+  whatever the grant rows say. Plus `/users` refuses to remove the last active admin.
+  `Auth__ResetAdmin="user:password"` is the documented way back in.
+- **`ServerSecret` is deliberately not seeded** — a `HasData` row would bake one label-signing
+  key into the migration and every deployment would share it.
+- Cookies are `SameSite=Lax` (Strict would drop the session on a QR scan, which is a top-level
+  cross-origin navigation) and `Secure` only via `Auth__SecureCookies`, since the API only sees
+  the proxy's plain-HTTP hop and can't detect HTTPS itself.
+- `DocumentCategory.Sensitive` is **finally enforced**, as a query filter: without
+  `documents.read_sensitive` those documents are absent from lists and **404** (not 403 — that
+  would confirm they exist) on fetch and download.
+- Client-side `can()` from `useAuth()` is for hiding and disabling controls only. `AuthProvider`
+  renders children immediately rather than gating on `/auth/me`, because blocking the tree
+  would put a network round-trip in front of every QR scan.
+- `scripts/auth-smoke.sh` asserts the whole matrix end-to-end against a running stack. There is
+  still no test project, so this is the regression net a new endpoint has to pass.
+
 ## Out of Scope (MVP)
 
-Auth, multi-user, Home Assistant integration, OBD2/vehicle diagnostics, operating hours tracking, AI features.
+Home Assistant integration, OBD2/vehicle diagnostics, operating hours tracking, AI features.
+External identity providers are not wired, but the seam exists (see Authentication).

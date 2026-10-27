@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 import EntityCombobox from '@/components/EntityCombobox'
 import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
@@ -21,6 +22,7 @@ function formatDate(iso: string) {
 export default function PartDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const { loading: authLoading, can } = useAuth()
   const [part, setPart] = useState<Part | null>(null)
   const [usages, setUsages] = useState<PartUsage[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,9 +98,15 @@ export default function PartDetailPage() {
     if (part) setPart({ ...part, quantity: part.quantity + (usages.find(u => u.id === usageId)?.quantityUsed ?? 0) })
   }
 
-  if (loading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
+  // can() is false while auth is in flight, so wait for it rather than painting a
+  // read-only page at someone who may edit it.
+  if (loading || authLoading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
   if (!part) return <div className="p-6 text-red-500 text-sm">Part not found</div>
 
+  // The ± buttons write the stock level itself (PUT /parts/{id}), so they follow
+  // parts.write — parts.consume covers spending stock *on an event*, which is the
+  // usage-history row below.
+  const canEdit = can('parts.write')
   const lowStock = part.minQuantity != null && part.quantity <= part.minQuantity
   const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700'
 
@@ -107,9 +115,11 @@ export default function PartDetailPage() {
       <div className="flex items-center gap-3">
         <Link href="/parts" className="text-blue-500 text-sm">‹ Parts</Link>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 truncate flex-1">{part.name}</h1>
-        <button onClick={() => setEditing(v => !v)} className="text-sm text-blue-500 font-medium">
-          {editing ? 'Cancel' : 'Edit'}
-        </button>
+        {canEdit && (
+          <button onClick={() => setEditing(v => !v)} className="text-sm text-blue-500 font-medium">
+            {editing ? 'Cancel' : 'Edit'}
+          </button>
+        )}
       </div>
 
       {/* Quantity card */}
@@ -123,16 +133,18 @@ export default function PartDetailPage() {
             <p className="text-xs text-amber-500 mt-1">Low stock — min {part.minQuantity} {part.unit}</p>
           )}
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => adjust(-1)} disabled={adjusting}
-            className="w-10 h-10 rounded-full border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xl font-bold hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
-            −
-          </button>
-          <button onClick={() => adjust(1)} disabled={adjusting}
-            className="w-10 h-10 rounded-full bg-blue-600 text-white text-xl font-bold hover:bg-blue-700 disabled:opacity-40">
-            +
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-3">
+            <button onClick={() => adjust(-1)} disabled={adjusting}
+              className="w-10 h-10 rounded-full border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xl font-bold hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
+              −
+            </button>
+            <button onClick={() => adjust(1)} disabled={adjusting}
+              className="w-10 h-10 rounded-full bg-blue-600 text-white text-xl font-bold hover:bg-blue-700 disabled:opacity-40">
+              +
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Edit form */}
@@ -171,7 +183,8 @@ export default function PartDetailPage() {
                 setPartCategories(prev => [...prev, cat])
                 return cat
               }}
-              placeholder="Search or create…"
+              allowCreate={can('categories.manage')}
+              placeholder={can('categories.manage') ? 'Search or create…' : 'Search…'}
             />
           </div>
           <div>
@@ -216,7 +229,7 @@ export default function PartDetailPage() {
       )}
 
       {/* External links (spec sheet, reorder page) */}
-      <ExternalLinkList partId={id} />
+      <ExternalLinkList partId={id} readOnly={!can('links.write')} />
 
       {/* Documents filed against this part (spec sheet, safety data sheet, order
           confirmation). Attached from /documents — same read-only shape as equipment. */}
@@ -254,9 +267,11 @@ export default function PartDetailPage() {
                     {u.quantityUsed} {part.unit} used
                   </p>
                 </div>
-                <button onClick={() => removeUsage(u.id)}
-                  className="text-slate-400 hover:text-red-500 text-sm leading-none"
-                  aria-label="Remove usage">×</button>
+                {can('parts.consume') && (
+                  <button onClick={() => removeUsage(u.id)}
+                    className="text-slate-400 hover:text-red-500 text-sm leading-none"
+                    aria-label="Remove usage">×</button>
+                )}
               </li>
             ))}
           </ul>
@@ -264,12 +279,14 @@ export default function PartDetailPage() {
       </section>
 
       {/* Delete */}
-      <section className="pt-2 border-t border-slate-200 dark:border-slate-700">
-        <button onClick={handleDelete}
-          className="w-full text-red-600 dark:text-red-400 font-medium py-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-          Delete Part
-        </button>
-      </section>
+      {can('parts.delete') && (
+        <section className="pt-2 border-t border-slate-200 dark:border-slate-700">
+          <button onClick={handleDelete}
+            className="w-full text-red-600 dark:text-red-400 font-medium py-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+            Delete Part
+          </button>
+        </section>
+      )}
     </div>
   )
 }

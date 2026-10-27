@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -16,7 +17,7 @@ public static class ExternalLinkEndpoints
             if (equipment_id.HasValue) query = query.Where(l => l.EquipmentId == equipment_id.Value);
             if (part_id.HasValue) query = query.Where(l => l.PartId == part_id.Value);
             return await query.OrderBy(l => l.CreatedAt).ToListAsync();
-        });
+        }).RequirePermission(Permissions.LinksRead);
 
         group.MapPost("/", async (SaveExternalLinkDto dto, CmmsDbContext db) =>
         {
@@ -34,7 +35,7 @@ public static class ExternalLinkEndpoints
             db.ExternalLinks.Add(link);
             await db.SaveChangesAsync();
             return Results.Created($"/external-links/{link.Id}", link);
-        });
+        }).RequirePermission(Permissions.LinksWrite);
 
         // Only the url/label are editable — moving a link to a different parent is a
         // delete-and-recreate, so the target ids are ignored here.
@@ -50,7 +51,7 @@ public static class ExternalLinkEndpoints
             link.Label = dto.Label.Trim();
             await db.SaveChangesAsync();
             return Results.Ok(link);
-        });
+        }).RequirePermission(Permissions.LinksWrite);
 
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
@@ -59,7 +60,7 @@ public static class ExternalLinkEndpoints
             db.ExternalLinks.Remove(link);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        }).RequirePermission(Permissions.LinksWrite);
     }
 
     static async Task<Dictionary<string, string[]>> ValidateAsync(

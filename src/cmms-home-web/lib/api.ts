@@ -3,16 +3,71 @@ import type {
   StorageLocationContents, Document, DocumentCategory, ClassifyDocumentDto,
   CreateEquipmentDto, CreateEventDto, CreateRuleDto, UpdateRuleDto, UpdateEventDto,
   AppSettings, SaveAppSettingsResult, ExternalLink,
+  Me, User, SaveUserDto, AccessGrid, AuthSession,
 } from './types'
 
 const API_BASE = '/api'
 
+/**
+ * A failed API call, carrying enough to react to rather than just report.
+ *
+ * The old opaque `Error('API error 403')` was fine while every call either worked or was a
+ * bug. With permissions it no longer is: 401 means offer a sign-in, 403 means this user
+ * genuinely may not, 503 + setupRequired means send them to first-run setup — and a page
+ * that cannot tell them apart has to treat "not allowed" as "broken".
+ */
+export class ApiError extends Error {
+  readonly status: number
+  readonly detail?: string
+  /** The permission the server wanted, when it said so. */
+  readonly permission?: string
+  readonly setupRequired: boolean
+  /** True when refused because the caller only proved they hold a printed label. */
+  readonly labelScoped: boolean
+  readonly errors?: Record<string, string[]>
+
+  constructor(status: number, body: unknown) {
+    const problem = (body ?? {}) as {
+      title?: string
+      detail?: string
+      permission?: string
+      setupRequired?: boolean
+      labelScoped?: boolean
+      errors?: Record<string, string[]>
+    }
+
+    super(problem.detail || problem.title || `API error ${status}`)
+    this.name = 'ApiError'
+    this.status = status
+    this.detail = problem.detail
+    this.permission = problem.permission
+    this.setupRequired = problem.setupRequired === true
+    this.labelScoped = problem.labelScoped === true
+    this.errors = problem.errors
+  }
+
+  get isUnauthenticated() { return this.status === 401 }
+  get isForbidden() { return this.status === 403 }
+  /** Either flavour of "the server refused on permission grounds", for hiding UI. */
+  get isDenied() { return this.status === 401 || this.status === 403 }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
+    // Explicit rather than relying on the default: these are same-origin calls to the /api
+    // proxy, and the session cookie riding along is load-bearing now, not incidental.
+    credentials: 'same-origin',
     ...options,
   })
-  if (!res.ok) throw new Error(`API error ${res.status}`)
+
+  if (!res.ok) {
+    // Denials and validation failures carry a ProblemDetails body worth keeping; anything
+    // else may not be JSON at all, so failing to parse must not mask the real status.
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, body)
+  }
+
   if (res.status === 204) return undefined as T
   return res.json()
 }
@@ -184,5 +239,57 @@ export const api = {
     get: () => request<AppSettings>('/app-settings'),
     update: (dto: AppSettings) =>
       request<SaveAppSettingsResult>('/app-settings', { method: 'PUT', body: JSON.stringify(dto) }),
+  },
+  auth: {
+    /** Who the server thinks we are. Never throws on "nobody" — that is a valid answer. */
+    me: () => request<Me>('/auth/me'),
+    login: (username: string, password: string) =>
+      request<Me>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+    logout: () => request<void>('/auth/logout', { method: 'POST' }),
+    /** First run only; creates the first administrator and signs them in. */
+    setup: (dto: { username: string; password: string; displayName?: string }) =>
+      request<Me>('/auth/setup', { method: 'POST', body: JSON.stringify(dto) }),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      request<void>('/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
+    /**
+     * Trades a printed label's `?t=` token for a short-lived scope covering that one item,
+     * so an anonymous scan can log maintenance without being able to browse anything else.
+     */
+    labelSession: (equipmentId: string, token: string) =>
+      request<{ equipmentId: string; expiresInSeconds: number }>(
+        '/auth/label-session', { method: 'POST', body: JSON.stringify({ equipmentId, token }) }),
+    /** equipmentId -> token, for embedding in QR codes when printing. */
+    labelTokens: (equipmentId?: string) =>
+      request<Record<string, string>>(
+        `/auth/label-tokens${equipmentId ? `?equipment_id=${equipmentId}` : ''}`),
+    /** Invalidates every label already printed. */
+    rotateLabelKey: () =>
+      request<{ rotated: boolean; message: string }>('/auth/label-key/rotate', { method: 'POST' }),
+    sessions: () => request<AuthSession[]>('/auth/sessions'),
+    revokeSession: (id: string) => request<void>(`/auth/sessions/${id}`, { method: 'DELETE' }),
+  },
+  users: {
+    list: () => request<User[]>('/users'),
+    get: (id: string) => request<User>(`/users/${id}`),
+    create: (dto: SaveUserDto) =>
+      request<User>('/users', { method: 'POST', body: JSON.stringify(dto) }),
+    update: (id: string, dto: SaveUserDto) =>
+      request<User>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
+    delete: (id: string) => request<void>(`/users/${id}`, { method: 'DELETE' }),
+  },
+  roles: {
+    /** The whole grid in one call: catalogue, roles, and who is granted what. */
+    get: () => request<AccessGrid>('/roles'),
+    create: (dto: { name: string; isDefaultForNewUsers: boolean }) =>
+      request<{ id: string; name: string }>('/roles', { method: 'POST', body: JSON.stringify(dto) }),
+    update: (id: string, dto: { name: string; isDefaultForNewUsers: boolean }) =>
+      request<{ id: string; name: string }>(`/roles/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
+    delete: (id: string) => request<void>(`/roles/${id}`, { method: 'DELETE' }),
+    /**
+     * Saves the grid whole, as roleId -> granted permission keys. Deliberately not
+     * per-cell: a half-applied permission matrix is a worse state than either version of it.
+     */
+    saveGrid: (grants: Record<string, string[]>) =>
+      request<void>('/roles/permissions', { method: 'PUT', body: JSON.stringify({ grants }) }),
   },
 }

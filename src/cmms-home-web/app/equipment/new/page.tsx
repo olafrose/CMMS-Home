@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 import type { Category, Equipment, EquipmentKind } from '@/lib/types'
 import EntityCombobox from '@/components/EntityCombobox'
 import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
@@ -18,6 +19,7 @@ const KIND_OPTIONS: { value: EquipmentKind; label: string }[] = [
 
 export default function NewEquipmentPage() {
   const router = useRouter()
+  const { loading: authLoading, can } = useAuth()
   const [name, setName] = useState('')
   const [kind, setKind] = useState<EquipmentKind>('Asset')
   const [categoryId, setCategoryId] = useState<string | null>(null)
@@ -75,6 +77,18 @@ export default function NewEquipmentPage() {
 
   const backHref = fromLocationId ? `/storage/${fromLocationId}` : (kind === 'Tool' ? '/tools' : '/assets')
 
+  // The whole page is one mutation, so it stands or falls with equipment.write. Render
+  // nothing until /auth/me answers — anything else flashes a refusal at everyone.
+  if (authLoading) return null
+  if (!can('equipment.write')) {
+    return (
+      <div className="max-w-lg mx-auto px-4 pt-6 space-y-3">
+        <Link href={backHref} className="text-blue-500 text-sm">‹ Back</Link>
+        <p className="text-sm text-slate-500 dark:text-slate-400">You do not have permission to add equipment.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
       <div className="flex items-center gap-3 mb-6">
@@ -122,6 +136,7 @@ export default function NewEquipmentPage() {
             value={categoryId}
             onChange={setCategoryId}
             onCreate={handleCreateCategory}
+            allowCreate={can('categories.manage')}
             placeholder="e.g. Appliance, HVAC, Vehicle"
           />
         </div>

@@ -12,9 +12,14 @@ public static class DocumentEndpoints
     {
         var group = app.MapGroup("/documents").WithTags("Documents");
 
-        group.MapGet("/", async (string? status, Guid? equipment_id, Guid? event_id, Guid? part_id, CmmsDbContext db) =>
+        group.MapGet("/", async (string? status, Guid? equipment_id, Guid? event_id, Guid? part_id, CmmsDbContext db, ActorAccessor accessor) =>
         {
+            var actor = await accessor.GetAsync();
+
+            // VisibleTo first, so the status/link filters below narrow a set that already
+            // excludes what this caller may not know exists.
             var q = db.Documents
+                .VisibleTo(actor)
                 .Include(d => d.Links)
                 .Include(d => d.Category)
                 .AsQueryable();
@@ -39,20 +44,27 @@ public static class DocumentEndpoints
                 q = q.Where(d => d.Links.Any(l => l.PartId == part_id));
 
             return Results.Ok(await q.OrderByDescending(d => d.DiscoveredAt).ToListAsync());
-        });
+        }).RequirePermission(Permissions.DocumentsList);
 
-        group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db) =>
+        group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db, ActorAccessor accessor) =>
         {
+            var actor = await accessor.GetAsync();
+
+            // A sensitive document the caller may not see simply isn't found — see VisibleTo
+            // for why this is a 404 and not a 403.
             var doc = await db.Documents
+                .VisibleTo(actor)
                 .Include(d => d.Links)
                 .Include(d => d.Category)
                 .FirstOrDefaultAsync(d => d.Id == id);
             return doc is not null ? Results.Ok(doc) : Results.NotFound();
-        });
+        }).RequirePermission(Permissions.DocumentsRead);
 
-        group.MapGet("/{id:guid}/content", async (Guid id, CmmsDbContext db, IOptions<DocumentScanOptions> opts, HttpContext http) =>
+        group.MapGet("/{id:guid}/content", async (Guid id, CmmsDbContext db, ActorAccessor accessor, IOptions<DocumentScanOptions> opts, HttpContext http) =>
         {
-            var doc = await db.Documents.FindAsync(id);
+            var actor = await accessor.GetAsync();
+
+            var doc = await db.Documents.VisibleTo(actor).FirstOrDefaultAsync(d => d.Id == id);
             if (doc is null || doc.Status == DocumentStatus.Missing)
                 return Results.NotFound();
 
@@ -77,7 +89,7 @@ public static class DocumentEndpoints
 
             var stream = File.OpenRead(fullPath);
             return Results.Stream(stream, doc.ContentType, enableRangeProcessing: true);
-        });
+        }).RequirePermission(Permissions.DocumentsDownload);
 
         group.MapPut("/{id:guid}/classify", async (Guid id, ClassifyDocumentDto dto, CmmsDbContext db, IDocumentFiler filer) =>
         {
@@ -162,7 +174,7 @@ public static class DocumentEndpoints
             await db.Entry(doc).ReloadAsync();
             await db.Entry(doc).Reference(d => d.Category).LoadAsync();
             return Results.Ok(doc);
-        });
+        }).RequirePermission(Permissions.DocumentsClassify);
 
         group.MapPost("/{id:guid}/ignore", async (Guid id, CmmsDbContext db) =>
         {
@@ -175,7 +187,7 @@ public static class DocumentEndpoints
             doc.Status = DocumentStatus.Ignored;
             await db.SaveChangesAsync();
             return Results.Ok(doc);
-        });
+        }).RequirePermission(Permissions.DocumentsClassify);
 
         // Undo a classification: clear links + category, return to the inbox queue,
         // and (managed foldering) move the file from library/ back to inbox/.
@@ -197,17 +209,20 @@ public static class DocumentEndpoints
             await db.Entry(doc).ReloadAsync();
             await db.Entry(doc).Reference(d => d.Category).LoadAsync();
             return Results.Ok(doc);
-        });
+        }).RequirePermission(Permissions.DocumentsClassify);
 
         group.MapPost("/scan", async (IDocumentScanner scanner) =>
         {
             var result = await scanner.ScanAsync();
             return Results.Ok(result);
-        });
+        }).RequirePermission(Permissions.DocumentsScan);
 
         // Upload a file into the app-owned inbox zone, then let the scanner index
         // it as a normal Unclassified document (reusing hash/dedupe). Requires a
-        // writable RootPath (Phase 2). Same-origin proxy + no auth → antiforgery off.
+        // writable RootPath (Phase 2). Antiforgery off because the session cookie is
+        // SameSite=Lax: the browser withholds it from a cross-site POST, so a form on
+        // another origin cannot make this request as a signed-in user — which is the
+        // attack a token would otherwise be defending against.
         group.MapPost("/upload", async (IFormFile file, IOptions<DocumentScanOptions> opts, IDocumentScanner scanner, CmmsDbContext db, ILoggerFactory loggerFactory) =>
         {
             if (file is null || file.Length == 0)
@@ -275,7 +290,7 @@ public static class DocumentEndpoints
                 .FirstOrDefaultAsync(d => d.RelativePath == relativePath);
 
             return doc is not null ? Results.Ok(doc) : Results.Accepted();
-        }).DisableAntiforgery();
+        }).DisableAntiforgery().RequirePermission(Permissions.DocumentsUpload);
 
         // Forget a document record (links cascade). Does not touch the file on disk.
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
@@ -285,7 +300,7 @@ public static class DocumentEndpoints
             db.Documents.Remove(doc);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        }).RequirePermission(Permissions.DocumentsDelete);
 
         // Bulk-forget every document whose file is no longer on disk (Status = Missing).
         group.MapPost("/prune-missing", async (CmmsDbContext db) =>
@@ -294,7 +309,7 @@ public static class DocumentEndpoints
                 .Where(d => d.Status == DocumentStatus.Missing)
                 .ExecuteDeleteAsync();
             return Results.Ok(new { removed });
-        });
+        }).RequirePermission(Permissions.DocumentsDelete);
     }
 }
 

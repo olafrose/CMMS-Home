@@ -13,9 +13,15 @@ interface Props {
   onChange: (id: string | null) => void
   onCreate: (name: string) => Promise<Item>
   placeholder?: string
+  /**
+   * Whether the inline "+ Create" is offered. Every consumer creates a category, which the
+   * API gates on categories.manage — so a picker is still useful without it, but the create
+   * row would only ever 403. Defaults to true; the owning page decides.
+   */
+  allowCreate?: boolean
 }
 
-export default function EntityCombobox({ items, value, onChange, onCreate, placeholder }: Props) {
+export default function EntityCombobox({ items, value, onChange, onCreate, placeholder, allowCreate = true }: Props) {
   const [input, setInput] = useState('')
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -29,7 +35,7 @@ export default function EntityCombobox({ items, value, onChange, onCreate, place
     : items
 
   const exactMatch = items.some(i => i.name.toLowerCase() === input.trim().toLowerCase())
-  const showCreate = input.trim().length > 0 && !exactMatch
+  const showCreate = allowCreate && input.trim().length > 0 && !exactMatch
 
   function handleSelect(item: Item) {
     onChange(item.id)

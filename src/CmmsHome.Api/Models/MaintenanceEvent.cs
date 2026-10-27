@@ -9,5 +9,10 @@ public class MaintenanceEvent
     public string? PhotoUrl { get; set; }
     public DateTime CreatedAt { get; set; }
 
+    // Who logged this. Null for anonymous label scans and for every row that predates
+    // authentication, both of which render as "—" rather than being backfilled to a
+    // fictional user.
+    public Guid? CreatedByUserId { get; set; }
+
     public Equipment Equipment { get; set; } = null!;
 }

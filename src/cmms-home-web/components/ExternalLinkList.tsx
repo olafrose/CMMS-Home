@@ -8,9 +8,13 @@ const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slat
 
 // Web links (manual, spec sheet, repair video, reorder page) for one equipment or part.
 // Exactly one of equipmentId/partId should be passed — that's what the API enforces.
-export default function ExternalLinkList({ equipmentId, partId }: {
+//
+// `readOnly` drops the add/edit/delete affordances; the owning page decides it from
+// links.write, so this component stays free of auth knowledge.
+export default function ExternalLinkList({ equipmentId, partId, readOnly }: {
   equipmentId?: string
   partId?: string
+  readOnly?: boolean
 }) {
   const [links, setLinks] = useState<ExternalLink[]>([])
   const [loading, setLoading] = useState(true)
@@ -70,6 +74,8 @@ export default function ExternalLinkList({ equipmentId, partId }: {
   }
 
   if (loading) return null
+  // Read-only with nothing to read is an empty heading and an apology — show neither.
+  if (readOnly && links.length === 0) return null
 
   return (
     <section>
@@ -77,12 +83,14 @@ export default function ExternalLinkList({ equipmentId, partId }: {
         <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
           Links{links.length > 0 ? ` (${links.length})` : ''}
         </h2>
-        <button
-          onClick={() => (adding || editingId ? reset() : setAdding(true))}
-          className="text-sm text-blue-500 font-medium"
-        >
-          {adding || editingId ? 'Cancel' : '+ Add'}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => (adding || editingId ? reset() : setAdding(true))}
+            className="text-sm text-blue-500 font-medium"
+          >
+            {adding || editingId ? 'Cancel' : '+ Add'}
+          </button>
+        )}
       </div>
 
       {(adding || editingId) && (
@@ -124,16 +132,20 @@ export default function ExternalLinkList({ equipmentId, partId }: {
               <p className="text-sm font-medium text-blue-600 dark:text-blue-400 truncate">{link.label}</p>
               <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{link.url}</p>
             </a>
-            <button
-              onClick={() => startEdit(link)}
-              className="text-slate-400 dark:text-slate-500 hover:text-blue-500 text-lg leading-none"
-              aria-label="Edit link"
-            >✏️</button>
-            <button
-              onClick={() => remove(link)}
-              className="text-slate-400 dark:text-slate-500 hover:text-red-500 text-lg leading-none"
-              aria-label="Delete link"
-            >🗑️</button>
+            {!readOnly && (
+              <>
+                <button
+                  onClick={() => startEdit(link)}
+                  className="text-slate-400 dark:text-slate-500 hover:text-blue-500 text-lg leading-none"
+                  aria-label="Edit link"
+                >✏️</button>
+                <button
+                  onClick={() => remove(link)}
+                  className="text-slate-400 dark:text-slate-500 hover:text-red-500 text-lg leading-none"
+                  aria-label="Delete link"
+                >🗑️</button>
+              </>
+            )}
           </li>
         ))}
       </ul>

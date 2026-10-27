@@ -173,8 +173,8 @@ export interface UpdateRuleDto {
 
 export type DocumentStatus = 'Unclassified' | 'Classified' | 'Ignored' | 'Missing' | 'PendingMove'
 
-// First-class, user-managed document category. `sensitive` will gate visibility
-// for anonymous users once auth exists; `color` drives the badge.
+// First-class, user-managed document category. `sensitive` gates visibility behind the
+// documents.read_sensitive permission; `color` drives the badge.
 export interface DocumentCategory {
   id: string
   name: string
@@ -239,4 +239,98 @@ export interface SaveAppSettingsResult {
   settings: AppSettings
   /** Places left deeper than a newly lowered cap — informational, not an error. */
   placesOverNewDepthCap: number
+}
+
+// --- Authentication, roles and the rights grid -----------------------------------------
+//
+// Roles are independent of *how* someone signed in: the server models credentials as
+// separate identities, so adding an external identity provider later changes none of this.
+
+/** The answer to "who am I and what may I do", from GET /auth/me, /auth/login, /auth/setup. */
+export interface Me {
+  authenticated: boolean
+  /** No accounts exist yet — send the operator to /setup, not to a login form. */
+  setupRequired: boolean
+  user: MeUser | null
+  /**
+   * Permission keys held. Mirrored into can() to hide and disable controls; the server
+   * enforces independently, so this is a courtesy to the user, never a security boundary.
+   */
+  permissions: string[]
+  /** Set when the caller arrived by scanning a printed label, naming the item it covers. */
+  labelScopedEquipmentId: string | null
+}
+
+export interface MeUser {
+  id: string
+  username: string
+  displayName: string | null
+  createdAt: string
+  roles: RoleRef[]
+}
+
+export interface RoleRef {
+  id: string
+  name: string
+}
+
+export interface User {
+  id: string
+  username: string
+  displayName: string | null
+  isActive: boolean
+  createdAt: string
+  lastLoginAt: string | null
+  roles: RoleRef[]
+}
+
+export interface SaveUserDto {
+  username: string
+  /** Required when creating; omit when editing to leave the existing password alone. */
+  password?: string
+  displayName?: string
+  isActive: boolean
+  roleIds: string[]
+}
+
+export interface AuthSession {
+  id: string
+  createdAt: string
+  lastSeenAt: string
+  expiresAt: string
+  userAgent: string | null
+  current: boolean
+}
+
+/** One row of the grid: a capability the code actually checks. */
+export interface PermissionInfo {
+  key: string
+  /** Section heading the grid groups by, in catalogue order. */
+  group: string
+  label: string
+  description: string
+  /** False for permissions meaningless without an account — rendered not-applicable. */
+  allowedForAnonymous: boolean
+  /** True for permissions Admin can never give up — rendered locked on. */
+  alwaysOnForAdmin: boolean
+}
+
+/** One column of the grid. */
+export interface AccessRole {
+  id: string
+  name: string
+  /** Built-in and undeletable: Admin and Anonymous. */
+  isSystem: boolean
+  /** The not-signed-in subject. Has no members by definition. */
+  isAnonymous: boolean
+  isDefaultForNewUsers: boolean
+  sortOrder: number
+  memberCount: number
+  granted: string[]
+}
+
+/** Everything the grid needs, from GET /roles. */
+export interface AccessGrid {
+  permissions: PermissionInfo[]
+  roles: AccessRole[]
 }

@@ -5,8 +5,8 @@ import { api } from '@/lib/api'
 import { CATEGORY_COLORS, categoryBadgeStyle } from '@/lib/documents'
 import type { DocumentCategory } from '@/lib/types'
 
-// Manages document categories (name + color + a "sensitive" flag). Sensitive
-// categories will be hidden from anonymous users once auth exists.
+// Manages document categories (name + color + a "sensitive" flag). Sensitive categories are
+// hidden from anyone without the documents.read_sensitive permission.
 export default function DocumentCategoryManager() {
   const [items, setItems] = useState<DocumentCategory[]>([])
   const [loading, setLoading] = useState(true)

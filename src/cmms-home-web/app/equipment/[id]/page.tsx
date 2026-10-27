@@ -8,6 +8,7 @@ import EntityCombobox from '@/components/EntityCombobox'
 import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
 import { DocumentPreviewButton } from '@/components/DocumentPreview'
+import { useAuth } from '@/components/AuthProvider'
 import { locationPath } from '@/lib/storage'
 import ExternalLinkList from '@/components/ExternalLinkList'
 import WarrantyFields, { EMPTY_WARRANTY, warrantyFromEquipment, warrantyToDto, type WarrantyValues } from '@/components/WarrantyFields'
@@ -170,6 +171,7 @@ function RuleForm({ initial, submitting, submitLabel, onSubmit, onCancel }: {
 export default function EquipmentDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const { loading: authLoading, can } = useAuth()
   const [item, setItem] = useState<Equipment | null>(null)
   const [events, setEvents] = useState<MaintenanceEvent[]>([])
   const [rules, setRules] = useState<MaintenanceRule[]>([])
@@ -272,8 +274,16 @@ export default function EquipmentDetailPage() {
     try { await api.equipment.delete(id); router.push(kind === 'Tool' ? '/tools' : '/assets') } catch { setDeleting(false) }
   }
 
-  if (loading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
+  // can() is false while auth is in flight, so wait for it rather than painting a
+  // read-only page at someone who may edit it.
+  if (loading || authLoading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
   if (!item) return <div className="p-6 text-red-500 text-sm">Not found</div>
+
+  const canEditItem = can('equipment.write')
+  const canDeleteItem = can('equipment.delete')
+  const canLend = can('equipment.lend')
+  const canWriteRules = can('rules.write')
+  const canDeleteRules = can('rules.delete')
 
   const logUrl = `${process.env.NEXT_PUBLIC_QR_BASE_URL || origin}/equipment/${id}/log`
   const loan = item.loans?.find(l => !l.returnedAt)
@@ -286,7 +296,9 @@ export default function EquipmentDetailPage() {
       <div className="flex items-center gap-3">
         <Link href={backHref} className="text-blue-500 text-sm">‹ Back</Link>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 truncate flex-1">{item.name}</h1>
-        <button onClick={() => { setEditing(v => !v); seed(item) }} className="text-sm text-blue-500 font-medium">{editing ? 'Cancel' : 'Edit'}</button>
+        {canEditItem && (
+          <button onClick={() => { setEditing(v => !v); seed(item) }} className="text-sm text-blue-500 font-medium">{editing ? 'Cancel' : 'Edit'}</button>
+        )}
       </div>
 
       {editing ? (
@@ -312,7 +324,8 @@ export default function EquipmentDetailPage() {
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Category</label>
             <EntityCombobox items={categories} value={categoryId} onChange={setCategoryId}
               onCreate={async (n) => { const c = await api.categories.create(n); setCategories(p => [...p, c]); return c }}
-              placeholder="Search or create…" />
+              allowCreate={can('categories.manage')}
+              placeholder={can('categories.manage') ? 'Search or create…' : 'Search…'} />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Stored at</label>
@@ -368,36 +381,49 @@ export default function EquipmentDetailPage() {
         </div>
       )}
 
-      {/* Lending */}
-      <div className={`${card} px-4 py-4`}>
-        {loan ? (
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">Out on loan</p>
-              <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{loan.borrower} <span className="text-slate-400 dark:text-slate-500">· since {formatDate(loan.loanedAt)}</span></p>
+      {/* Lending — who has it is worth reading without the right to lend, but the empty
+          "Lend to…" box is nothing but a control, so it goes with the permission. */}
+      {(loan || canLend) && (
+        <div className={`${card} px-4 py-4`}>
+          {loan ? (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">Out on loan</p>
+                <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{loan.borrower} <span className="text-slate-400 dark:text-slate-500">· since {formatDate(loan.loanedAt)}</span></p>
+              </div>
+              {canLend && (
+                <button onClick={doReturn} disabled={loanBusy} className="shrink-0 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full disabled:opacity-50">{loanBusy ? '…' : 'Return'}</button>
+              )}
             </div>
-            <button onClick={doReturn} disabled={loanBusy} className="shrink-0 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full disabled:opacity-50">{loanBusy ? '…' : 'Return'}</button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <input type="text" value={borrower} onChange={e => setBorrower(e.target.value)} placeholder="Lend to…" className="field flex-1"
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); checkout() } }} />
-            <button onClick={checkout} disabled={loanBusy || !borrower.trim()} className="shrink-0 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full disabled:opacity-50">{loanBusy ? '…' : 'Check out'}</button>
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input type="text" value={borrower} onChange={e => setBorrower(e.target.value)} placeholder="Lend to…" className="field flex-1"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); checkout() } }} />
+              <button onClick={checkout} disabled={loanBusy || !borrower.trim()} className="shrink-0 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full disabled:opacity-50">{loanBusy ? '…' : 'Check out'}</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Quick log CTA */}
-      <Link href={`/equipment/${id}/log`} className="block w-full bg-blue-600 text-white text-center font-semibold py-4 rounded-xl shadow text-lg">+ Log Maintenance</Link>
+      {can('events.create') && (
+        <Link href={`/equipment/${id}/log`} className="block w-full bg-blue-600 text-white text-center font-semibold py-4 rounded-xl shadow text-lg">+ Log Maintenance</Link>
+      )}
 
       {/* Maintenance schedule */}
       <section>
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Maintenance Schedule</h2>
-          <button onClick={() => { setShowAddForm(v => !v); setEditingRuleId(null) }} className="text-sm text-blue-500 font-medium">{showAddForm ? 'Cancel' : '+ Add'}</button>
+          {canWriteRules && (
+            <button onClick={() => { setShowAddForm(v => !v); setEditingRuleId(null) }} className="text-sm text-blue-500 font-medium">{showAddForm ? 'Cancel' : '+ Add'}</button>
+          )}
         </div>
         {showAddForm && <div className="mb-3"><RuleForm submitting={savingAdd} submitLabel="Save Schedule" onSubmit={handleAddRule} onCancel={() => setShowAddForm(false)} /></div>}
-        {rules.length === 0 && !showAddForm && <p className="text-sm text-slate-400 dark:text-slate-500">No schedule yet. Tap + Add to create one.</p>}
+        {rules.length === 0 && !showAddForm && (
+          <p className="text-sm text-slate-400 dark:text-slate-500">
+            {canWriteRules ? 'No schedule yet. Tap + Add to create one.' : 'No schedule yet.'}
+          </p>
+        )}
         <ul className="space-y-2">
           {rules.map((r) => {
             const summary = scheduleSummary(r)
@@ -414,8 +440,12 @@ export default function EquipmentDetailPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>{r.status}</span>
-                      <button onClick={() => { setEditingRuleId(r.id); setShowAddForm(false) }} className="text-slate-400 dark:text-slate-500 hover:text-blue-500 text-lg leading-none" aria-label="Edit">✏️</button>
-                      <button onClick={() => handleDeleteRule(r.id)} className="text-slate-400 dark:text-slate-500 hover:text-red-500 text-lg leading-none" aria-label="Delete">🗑️</button>
+                      {canWriteRules && (
+                        <button onClick={() => { setEditingRuleId(r.id); setShowAddForm(false) }} className="text-slate-400 dark:text-slate-500 hover:text-blue-500 text-lg leading-none" aria-label="Edit">✏️</button>
+                      )}
+                      {canDeleteRules && (
+                        <button onClick={() => handleDeleteRule(r.id)} className="text-slate-400 dark:text-slate-500 hover:text-red-500 text-lg leading-none" aria-label="Delete">🗑️</button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -489,7 +519,7 @@ export default function EquipmentDetailPage() {
       )}
 
       {/* External links (manual, spec sheet, repair video) */}
-      <ExternalLinkList equipmentId={id} />
+      <ExternalLinkList equipmentId={id} readOnly={!can('links.write')} />
 
       {/* Documents linked to this equipment */}
       {documents.length > 0 && (
@@ -511,11 +541,13 @@ export default function EquipmentDetailPage() {
       )}
 
       {/* Delete */}
-      <section className="pt-2 border-t border-slate-200 dark:border-slate-700">
-        <button onClick={handleDelete} disabled={deleting} className="w-full text-red-600 dark:text-red-400 font-medium py-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 disabled:opacity-50">
-          {deleting ? 'Deleting…' : 'Delete'}
-        </button>
-      </section>
+      {canDeleteItem && (
+        <section className="pt-2 border-t border-slate-200 dark:border-slate-700">
+          <button onClick={handleDelete} disabled={deleting} className="w-full text-red-600 dark:text-red-400 font-medium py-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 disabled:opacity-50">
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </section>
+      )}
     </div>
   )
 }

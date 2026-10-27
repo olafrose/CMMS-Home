@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -11,7 +12,8 @@ public static class PartCategoryEndpoints
         var group = app.MapGroup("/part-categories").WithTags("PartCategories");
 
         group.MapGet("/", async (CmmsDbContext db) =>
-            await db.PartCategories.OrderBy(c => c.Name).ToListAsync());
+            await db.PartCategories.OrderBy(c => c.Name).ToListAsync())
+            .RequirePermission(Permissions.CategoriesRead);
 
         group.MapPost("/", async (CreatePartCategoryDto dto, CmmsDbContext db) =>
         {
@@ -23,7 +25,7 @@ public static class PartCategoryEndpoints
             db.PartCategories.Add(category);
             await db.SaveChangesAsync();
             return Results.Created($"/part-categories/{category.Id}", category);
-        });
+        }).RequirePermission(Permissions.CategoriesManage);
 
         group.MapPut("/{id:guid}", async (Guid id, CreatePartCategoryDto dto, CmmsDbContext db) =>
         {
@@ -33,7 +35,7 @@ public static class PartCategoryEndpoints
             category.Name = dto.Name.Trim();
             await db.SaveChangesAsync();
             return Results.Ok(category);
-        });
+        }).RequirePermission(Permissions.CategoriesManage);
 
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
@@ -42,7 +44,7 @@ public static class PartCategoryEndpoints
             db.PartCategories.Remove(category);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        }).RequirePermission(Permissions.CategoriesManage);
     }
 }
 

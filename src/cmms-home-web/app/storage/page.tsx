@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 import { childrenOf, locationPath, DEFAULT_LOCATION_ICON, LOCATION_ICON_CHOICES } from '@/lib/storage'
 import type { StorageLocation } from '@/lib/types'
 
@@ -33,6 +34,8 @@ function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
   onMove: (id: string, parentId?: string) => Promise<void>
   onDelete: (node: StorageLocation) => Promise<void>
 }) {
+  const { can } = useAuth()
+  const canWrite = can('storage.write')
   const kids = childrenOf(node.id, all)
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -69,10 +72,16 @@ function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
         ) : (
           <>
             <Link href={`/storage/${node.id}`} className="text-slate-400 hover:text-blue-500" aria-label="Contents">🔍</Link>
-            <button onClick={() => { setAdding(v => !v); setExpanded(true) }} className="text-slate-400 hover:text-blue-500" aria-label="Add child">＋</button>
-            <button onClick={() => { setEditing(true); setName(node.name); setIcon(node.icon ?? '') }} className="text-slate-400 hover:text-blue-500" aria-label="Rename">✏️</button>
-            <button onClick={() => setMoving(v => !v)} className="text-slate-400 hover:text-amber-500" aria-label="Move">↗️</button>
-            <button onClick={() => onDelete(node)} className="text-slate-400 hover:text-red-500" aria-label="Delete">🗑️</button>
+            {canWrite && (
+              <>
+                <button onClick={() => { setAdding(v => !v); setExpanded(true) }} className="text-slate-400 hover:text-blue-500" aria-label="Add child">＋</button>
+                <button onClick={() => { setEditing(true); setName(node.name); setIcon(node.icon ?? '') }} className="text-slate-400 hover:text-blue-500" aria-label="Rename">✏️</button>
+                <button onClick={() => setMoving(v => !v)} className="text-slate-400 hover:text-amber-500" aria-label="Move">↗️</button>
+              </>
+            )}
+            {can('storage.delete') && (
+              <button onClick={() => onDelete(node)} className="text-slate-400 hover:text-red-500" aria-label="Delete">🗑️</button>
+            )}
           </>
         )}
       </div>
@@ -126,6 +135,7 @@ function Node({ node, all, depth, onAdd, onRename, onMove, onDelete }: {
 }
 
 export default function StoragePage() {
+  const { loading: authLoading, can } = useAuth()
   const [all, setAll] = useState<StorageLocation[]>([])
   const [loading, setLoading] = useState(true)
   const [newRoot, setNewRoot] = useState('')
@@ -162,6 +172,10 @@ export default function StoragePage() {
   }
 
   const roots = childrenOf(undefined, all)
+  const canWrite = can('storage.write')
+  // Fold auth into the spinner so the empty-state wording doesn't change under the user
+  // once /auth/me lands.
+  const busy = loading || authLoading
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
@@ -170,15 +184,21 @@ export default function StoragePage() {
         <Link href="/labels" className="ml-auto text-sm text-blue-500 font-medium">🖨️ Labels</Link>
       </div>
 
-      <div className="flex gap-2 mb-6">
-        <input value={newRoot} onChange={e => setNewRoot(e.target.value)} onKeyDown={e => e.key === 'Enter' && addRoot()}
-          placeholder="New place (e.g. Garage)" className="field flex-1" />
-        <button onClick={addRoot} disabled={!newRoot.trim()}
-          className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl disabled:opacity-50">Add</button>
-      </div>
+      {canWrite && (
+        <div className="flex gap-2 mb-6">
+          <input value={newRoot} onChange={e => setNewRoot(e.target.value)} onKeyDown={e => e.key === 'Enter' && addRoot()}
+            placeholder="New place (e.g. Garage)" className="field flex-1" />
+          <button onClick={addRoot} disabled={!newRoot.trim()}
+            className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl disabled:opacity-50">Add</button>
+        </div>
+      )}
 
-      {loading && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}
-      {!loading && roots.length === 0 && <p className="text-slate-400 dark:text-slate-500 text-sm">No places yet. Add one above.</p>}
+      {busy && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}
+      {!busy && roots.length === 0 && (
+        <p className="text-slate-400 dark:text-slate-500 text-sm">
+          {canWrite ? 'No places yet. Add one above.' : 'No places yet.'}
+        </p>
+      )}
 
       <ul className="space-y-1">
         {roots.map(r => (

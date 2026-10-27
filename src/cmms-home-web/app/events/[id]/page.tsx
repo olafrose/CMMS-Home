@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 import type { MaintenanceEvent, Part, PartUsage } from '@/lib/types'
 
 const EVENT_TYPES = [
@@ -28,6 +29,7 @@ function formatDate(iso: string) {
 
 export default function EventDetailPage() {
   const { id: eventId } = useParams<{ id: string }>()
+  const { can } = useAuth()
   const searchParams = useSearchParams()
   const equipmentId = searchParams.get('equipment_id') ?? ''
   const backHref = equipmentId ? `/equipment/${equipmentId}` : '/assets'
@@ -50,11 +52,26 @@ export default function EventDetailPage() {
   const [adding, setAdding] = useState(false)
   const [search, setSearch] = useState('')
 
+  // The event and what it consumed are this page. The parts *inventory* is a separate
+  // read the quick-log flow must not depend on: it lands here straight after saving, and
+  // someone logging from a scanned label (or a viewer without parts access) can't read it —
+  // which would have failed the whole page on an otherwise successful save.
   useEffect(() => {
-    Promise.all([api.events.get(eventId), api.partUsages.list(eventId), api.parts.list()])
-      .then(([e, u, p]) => { setEvent(e); setUsages(u); setParts(p) })
+    Promise.all([
+      api.events.get(eventId),
+      api.partUsages.list(eventId).catch(() => [] as PartUsage[]),
+    ])
+      .then(([e, u]) => { setEvent(e); setUsages(u) })
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [eventId])
+
+  // Only worth asking for if it can be read; `can` flips once /auth/me resolves, which
+  // re-runs this.
+  useEffect(() => {
+    if (!can('parts.read')) return
+    api.parts.list().then(setParts).catch(() => {})
+  }, [can])
 
   function startEdit() {
     if (!event) return
@@ -101,6 +118,8 @@ export default function EventDetailPage() {
   }
 
   const selectedPart = parts.find(p => p.id === partId)
+  // Changing what an event consumed moves stock, so it needs more than read access.
+  const canConsume = can('parts.consume')
 
   if (loading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
   if (!event) return <div className="p-6 text-red-500 text-sm">Event not found</div>
@@ -110,7 +129,7 @@ export default function EventDetailPage() {
       <div className="flex items-center gap-3">
         <Link href={backHref} className="text-blue-500 text-sm">‹ Back</Link>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 flex-1">Event</h1>
-        {!editing && (
+        {!editing && can('events.edit') && (
           <button onClick={startEdit} className="text-sm text-blue-500 font-medium">Edit</button>
         )}
       </div>
@@ -165,8 +184,9 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      {/* Parts used */}
-      <section>
+      {/* Parts used — omitted entirely when there is nothing to show and nothing to add,
+          rather than leaving a bare heading over an empty space. */}
+      <section hidden={usages.length === 0 && !canConsume}>
         <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Parts Used</h2>
 
         {usages.length > 0 && (
@@ -177,19 +197,21 @@ export default function EventDetailPage() {
                   <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{u.part.name}</p>
                   <p className="text-xs text-slate-400">{u.quantityUsed} {u.part.unit}</p>
                 </div>
-                <button onClick={() => handleRemove(u)} className="text-slate-400 hover:text-red-500 text-xl leading-none px-1" aria-label="Remove">×</button>
+                {canConsume && (
+                  <button onClick={() => handleRemove(u)} className="text-slate-400 hover:text-red-500 text-xl leading-none px-1" aria-label="Remove">×</button>
+                )}
               </li>
             ))}
           </ul>
         )}
 
-        {!loading && parts.length === 0 && (
+        {!loading && canConsume && parts.length === 0 && (
           <p className="text-sm text-slate-400 dark:text-slate-500">
             No parts in inventory yet. <Link href="/parts/new" className="text-blue-500 underline">Add a part</Link> first.
           </p>
         )}
 
-        {parts.length > 0 && (
+        {canConsume && parts.length > 0 && (
           <div className={`${card} px-4 py-4 space-y-3`}>
             <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Add part used</p>
             <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPartId('') }}

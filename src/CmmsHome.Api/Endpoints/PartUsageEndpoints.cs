@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -17,7 +18,7 @@ public static class PartUsageEndpoints
                 .AsQueryable();
             if (event_id.HasValue) q = q.Where(u => u.MaintenanceEventId == event_id);
             return await q.ToListAsync();
-        });
+        }).RequirePermission(Permissions.PartsRead);
 
         group.MapPost("/", async (CreatePartUsageDto dto, CmmsDbContext db) =>
         {
@@ -36,7 +37,7 @@ public static class PartUsageEndpoints
             await db.SaveChangesAsync();
             await db.Entry(usage).Reference(u => u.Part).LoadAsync();
             return Results.Created($"/part-usages/{usage.Id}", usage);
-        });
+        }).RequirePermission(Permissions.PartsConsume);
 
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
@@ -47,7 +48,7 @@ public static class PartUsageEndpoints
             db.PartUsages.Remove(usage);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        }).RequirePermission(Permissions.PartsConsume);
     }
 }
 

@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -10,13 +11,20 @@ public static class RuleEndpoints
     {
         var group = app.MapGroup("/rules").WithTags("Rules");
 
-        group.MapGet("/", async (Guid? equipment_id, CmmsDbContext db) =>
+        group.MapGet("/", async (Guid? equipment_id, CmmsDbContext db, ActorAccessor accessor) =>
         {
+            var actor = await accessor.GetAsync();
+
+            // As on /events: a scanned label sees its own item's schedules, and cannot drop
+            // the filter to enumerate everything that is due in the house.
+            if (actor.IsLabelScoped && equipment_id != actor.ScopedEquipmentId)
+                return LabelScope.Denied();
+
             var query = db.Rules.AsQueryable();
             if (equipment_id.HasValue)
                 query = query.Where(r => r.EquipmentId == equipment_id.Value);
-            return await query.ToListAsync();
-        });
+            return Results.Ok(await query.ToListAsync());
+        }).RequirePermission(Permissions.RulesRead).AllowLabelScope();
 
         group.MapPost("/", async (CreateRuleDto dto, CmmsDbContext db) =>
         {
@@ -41,7 +49,7 @@ public static class RuleEndpoints
             db.Rules.Add(rule);
             await db.SaveChangesAsync();
             return Results.Created($"/rules/{rule.Id}", rule);
-        });
+        }).RequirePermission(Permissions.RulesWrite);
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateRuleDto dto, CmmsDbContext db) =>
         {
@@ -60,7 +68,7 @@ public static class RuleEndpoints
             if (dto.ReminderLeadUnit.HasValue) rule.ReminderLeadUnit = dto.ReminderLeadUnit.Value;
             await db.SaveChangesAsync();
             return Results.Ok(rule);
-        });
+        }).RequirePermission(Permissions.RulesWrite);
 
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
@@ -69,7 +77,7 @@ public static class RuleEndpoints
             db.Rules.Remove(rule);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        }).RequirePermission(Permissions.RulesDelete);
     }
 }
 

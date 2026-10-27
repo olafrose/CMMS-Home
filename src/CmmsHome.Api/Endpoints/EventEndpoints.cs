@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -12,18 +13,33 @@ public static class EventEndpoints
     {
         var group = app.MapGroup("/events").WithTags("Events");
 
-        group.MapGet("/", async (Guid? equipment_id, CmmsDbContext db) =>
+        group.MapGet("/", async (Guid? equipment_id, CmmsDbContext db, ActorAccessor accessor) =>
         {
+            var actor = await accessor.GetAsync();
+
+            // A label scan must name the item it scanned: unfiltered, this route would turn
+            // one printed label into the whole house's maintenance history.
+            if (actor.IsLabelScoped && equipment_id != actor.ScopedEquipmentId)
+                return LabelScope.Denied();
+
             var query = db.Events.AsQueryable();
             if (equipment_id.HasValue)
                 query = query.Where(e => e.EquipmentId == equipment_id.Value);
-            return await query.OrderByDescending(e => e.CreatedAt).ToListAsync();
-        });
+            return Results.Ok(await query.OrderByDescending(e => e.CreatedAt).ToListAsync());
+        }).RequirePermission(Permissions.EventsRead).AllowLabelScope();
 
-        group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db) =>
-            await db.Events.FindAsync(id) is MaintenanceEvent evt
-                ? Results.Ok(evt)
-                : Results.NotFound());
+        group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db, ActorAccessor accessor) =>
+        {
+            var evt = await db.Events.FindAsync(id);
+            if (evt is null) return Results.NotFound();
+
+            // The scope is on the item, not the event, so the event has to be loaded before
+            // it can be judged.
+            var actor = await accessor.GetAsync();
+            if (!actor.MayTouchEquipment(evt.EquipmentId)) return LabelScope.Denied();
+
+            return Results.Ok(evt);
+        }).RequirePermission(Permissions.EventsRead).AllowLabelScope();
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateEventDto dto, CmmsDbContext db) =>
         {
@@ -43,13 +59,18 @@ public static class EventEndpoints
 
             await db.SaveChangesAsync();
             return Results.Ok(evt);
-        });
+        }).RequirePermission(Permissions.EventsEdit);
 
-        group.MapPost("/", async (CreateEventDto dto, CmmsDbContext db) =>
+        group.MapPost("/", async (CreateEventDto dto, CmmsDbContext db, ActorAccessor accessor) =>
         {
             if (!ValidTypes.Contains(dto.Type))
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                     { ["type"] = [$"Type must be one of: {string.Join(", ", ValidTypes)}"] });
+
+            // The whole point of the label flow, so also the route most worth pinning down:
+            // a scanned label may log against that one item and nothing else.
+            var actor = await accessor.GetAsync();
+            if (!actor.MayTouchEquipment(dto.EquipmentId)) return LabelScope.Denied();
 
             if (!await db.Equipment.AnyAsync(e => e.Id == dto.EquipmentId))
                 return Results.NotFound();
@@ -63,7 +84,9 @@ public static class EventEndpoints
                 Type = dto.Type,
                 Note = dto.Note,
                 PhotoUrl = dto.PhotoUrl,
-                CreatedAt = occurredAt
+                CreatedAt = occurredAt,
+                // Null for a label scan, which is the honest answer: whoever held the label.
+                CreatedByUserId = actor.User?.Id
             };
             db.Events.Add(evt);
 
@@ -79,7 +102,7 @@ public static class EventEndpoints
 
             await db.SaveChangesAsync();
             return Results.Created($"/events/{evt.Id}", evt);
-        });
+        }).RequirePermission(Permissions.EventsCreate).AllowLabelScope();
     }
 }
 

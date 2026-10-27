@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 import EntityCombobox from '@/components/EntityCombobox'
 import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
 import StorageLocationPicker from '@/components/StorageLocationPicker'
@@ -13,6 +14,7 @@ const UNIT_SUGGESTIONS = ['each', 'L', 'mL', 'kg', 'g', 'm', 'cm', 'pack']
 
 export default function NewPartPage() {
   const router = useRouter()
+  const { loading: authLoading, can } = useAuth()
   const [name, setName] = useState('')
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState('')
@@ -62,10 +64,24 @@ export default function NewPartPage() {
     }
   }
 
+  const backHref = fromLocationId ? `/storage/${fromLocationId}` : '/parts'
+
+  // The whole page is one mutation, so it stands or falls with parts.write. Render nothing
+  // until /auth/me answers — anything else flashes a refusal at everyone.
+  if (authLoading) return null
+  if (!can('parts.write')) {
+    return (
+      <div className="max-w-lg mx-auto px-4 pt-6 space-y-3">
+        <Link href={backHref} className="text-blue-500 text-sm">‹ Back</Link>
+        <p className="text-sm text-slate-500 dark:text-slate-400">You do not have permission to add parts.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
       <div className="flex items-center gap-3 mb-6">
-        <Link href={fromLocationId ? `/storage/${fromLocationId}` : '/parts'} className="text-blue-500 text-sm">
+        <Link href={backHref} className="text-blue-500 text-sm">
           {fromLocationId ? '‹ Back' : '‹ Parts'}
         </Link>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">New Part</h1>
@@ -121,7 +137,8 @@ export default function NewPartPage() {
               setPartCategories(prev => [...prev, cat])
               return cat
             }}
-            placeholder="Search or create…"
+            allowCreate={can('categories.manage')}
+            placeholder={can('categories.manage') ? 'Search or create…' : 'Search…'}
           />
         </div>
 

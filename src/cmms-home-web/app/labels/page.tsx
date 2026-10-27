@@ -72,6 +72,7 @@ export default function LabelsPage() {
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [places, setPlaces] = useState<StorageLocation[]>([])
   const [settings, setSettings] = useState<AppSettings>()
+  const [labelTokens, setLabelTokens] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [origin, setOrigin] = useState('')
   const [onlyKey, setOnlyKey] = useState<string | null>(null)
@@ -115,8 +116,15 @@ export default function LabelsPage() {
   }, [formatId])
 
   useEffect(() => {
-    Promise.all([api.equipment.list(), api.storageLocations.list(), api.appSettings.get()])
-      .then(([eq, p, s]) => { setEquipment(eq); setPlaces(p); setSettings(s) })
+    Promise.all([
+      api.equipment.list(),
+      api.storageLocations.list(),
+      api.appSettings.get(),
+      // The signed per-item tokens the QR codes carry. Not fatal if refused — a label
+      // without one still works for anyone signed in, which beats printing nothing.
+      api.auth.labelTokens().catch(() => ({} as Record<string, string>)),
+    ])
+      .then(([eq, p, s, t]) => { setEquipment(eq); setPlaces(p); setSettings(s); setLabelTokens(t) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -126,13 +134,20 @@ export default function LabelsPage() {
   // leaf place name — "Bin 3" alone doesn't tell you which cabinet to walk to. Keeping it
   // short matters here specifically: fontScale is fitted once across the WHOLE print run,
   // so one deeply-nested item printing its full chain would shrink text on every label.
-  const equipmentItems = useMemo<LabelItem[]>(() => equipment.map(e => ({
-    key: `equipment:${e.id}`, kind: 'equipment', icon: e.kind === 'Tool' ? '🛠️' : '🔧', name: e.name,
-    lines: [e.category?.name, formatLocationPath(e.storageLocationId, places, settings)].filter(Boolean) as string[],
-    caption: 'Open',
-    qrUrl: `${qrBase}/equipment/${e.id}`,
-    maintenanceUrl: `${qrBase}/equipment/${e.id}/log`,
-  })), [equipment, places, settings, qrBase])
+  const equipmentItems = useMemo<LabelItem[]>(() => equipment.map(e => {
+    // The token is what authorises an anonymous scan of this one item. Omitted rather than
+    // faked when we don't have one: a `?t=` the server will reject is worse than a label
+    // that simply asks whoever scans it to sign in.
+    const token = labelTokens[e.id]
+    const q = token ? `?t=${encodeURIComponent(token)}` : ''
+    return {
+      key: `equipment:${e.id}`, kind: 'equipment', icon: e.kind === 'Tool' ? '🛠️' : '🔧', name: e.name,
+      lines: [e.category?.name, formatLocationPath(e.storageLocationId, places, settings)].filter(Boolean) as string[],
+      caption: 'Open',
+      qrUrl: `${qrBase}/equipment/${e.id}${q}`,
+      maintenanceUrl: `${qrBase}/equipment/${e.id}/log${q}`,
+    }
+  }), [equipment, places, settings, qrBase, labelTokens])
 
   // Every storage location is a printable label; the subtitle is its ancestor breadcrumb.
   // Deliberately the FULL lineage via locationPath (not the shortened formatLocationPath):

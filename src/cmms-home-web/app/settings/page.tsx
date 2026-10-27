@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 import { formatLocationPath, locationPath } from '@/lib/storage'
 import type { AppSettings, PathShorteningMode, StorageLocation } from '@/lib/types'
+import { errorMessage } from './access/shared'
 
 const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700'
 
@@ -25,7 +27,33 @@ function SettingRow({ href, icon, title, sub }: { href: string; icon: string; ti
   )
 }
 
+// The same row as SettingRow, but doing something rather than going somewhere.
+function ActionRow({ icon, title, sub, danger, disabled, onClick }: {
+  icon: string
+  title: string
+  sub: string
+  danger?: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full flex items-center gap-3 ${card} px-4 py-3 text-left disabled:opacity-50`}
+    >
+      <span className="text-lg leading-none">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium ${danger ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>{title}</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">{sub}</p>
+      </div>
+    </button>
+  )
+}
+
 export default function SettingsPage() {
+  const { loading: authLoading, can } = useAuth()
+  const canManage = can('settings.manage')
   const [draft, setDraft] = useState<AppSettings>()
   const [places, setPlaces] = useState<StorageLocation[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,6 +61,9 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [overCap, setOverCap] = useState(0)
   const [error, setError] = useState('')
+  const [rotating, setRotating] = useState(false)
+  const [rotateMessage, setRotateMessage] = useState('')
+  const [rotateError, setRotateError] = useState('')
 
   useEffect(() => {
     Promise.all([api.appSettings.get(), api.storageLocations.list()])
@@ -83,7 +114,28 @@ export default function SettingsPage() {
     }
   }
 
-  if (loading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
+  // Every label already printed carries a token signed with the current key, so rotating it
+  // locks all of them out at once — hence the spelled-out confirmation.
+  async function revokePrintedLabels() {
+    const warning =
+      'Revoke every printed label?\n\n' +
+      'The QR labels already stuck on your equipment will stop working for logging without ' +
+      'signing in. Every one of them has to be printed again from Labels.'
+    if (!confirm(warning)) return
+    setRotating(true)
+    setRotateMessage('')
+    setRotateError('')
+    try {
+      const result = await api.auth.rotateLabelKey()
+      setRotateMessage(result.message)
+    } catch (e) {
+      setRotateError(errorMessage(e, 'Could not revoke the printed labels. Try again.'))
+    } finally {
+      setRotating(false)
+    }
+  }
+
+  if (loading || authLoading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
   if (!draft) return <div className="p-6 text-red-500 text-sm">Could not load settings.</div>
 
   const depthValid = draft.storageMaxDepth >= 1 && draft.storageMaxDepth <= ABSOLUTE_MAX_DEPTH
@@ -102,7 +154,8 @@ export default function SettingsPage() {
             <input
               type="number" min={1} max={ABSOLUTE_MAX_DEPTH} value={draft.storageMaxDepth}
               onChange={e => patch({ storageMaxDepth: e.target.value === '' ? 0 : parseInt(e.target.value, 10) })}
-              className="field w-20 text-sm py-1.5 text-center"
+              disabled={!canManage}
+              className="field w-20 text-sm py-1.5 text-center disabled:opacity-60"
             />
           </label>
           <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -132,7 +185,8 @@ export default function SettingsPage() {
               <button
                 key={mode}
                 onClick={() => patch({ pathShorteningMode: mode })}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                disabled={!canManage}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium disabled:opacity-60 ${
                   draft.pathShorteningMode === mode
                     ? 'bg-blue-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
@@ -150,7 +204,8 @@ export default function SettingsPage() {
                 <input
                   type="number" min={1} max={ABSOLUTE_MAX_DEPTH} value={draft.pathShorteningSegments}
                   onChange={e => patch({ pathShorteningSegments: e.target.value === '' ? 0 : parseInt(e.target.value, 10) })}
-                  className="field w-20 text-sm py-1.5 text-center"
+                  disabled={!canManage}
+                  className="field w-20 text-sm py-1.5 text-center disabled:opacity-60"
                 />
               </label>
               {!segmentsValid && <p className="text-xs text-red-500">Must be at least 1.</p>}
@@ -172,20 +227,26 @@ export default function SettingsPage() {
           )}
         </div>
 
-        <button
-          onClick={save}
-          disabled={saving || !depthValid || !segmentsValid}
-          className="w-full bg-blue-600 text-white font-semibold py-2 rounded-xl disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : 'Save Changes'}
-        </button>
-        {saved && <p className="text-xs text-green-600 dark:text-green-400">Saved.</p>}
-        {error && <p className="text-xs text-red-500">{error}</p>}
-        {saved && overCap > 0 && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            {overCap} place{overCap !== 1 ? 's' : ''} sit deeper than the new limit. They keep
-            working; you just can&apos;t nest anything further inside them.
-          </p>
+        {/* Save covers both sections above — the two fields are shown to everyone who may
+            read settings, but only disabled inputs and no Save without settings.manage. */}
+        {canManage && (
+          <>
+            <button
+              onClick={save}
+              disabled={saving || !depthValid || !segmentsValid}
+              className="w-full bg-blue-600 text-white font-semibold py-2 rounded-xl disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+            {saved && <p className="text-xs text-green-600 dark:text-green-400">Saved.</p>}
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            {saved && overCap > 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                {overCap} place{overCap !== 1 ? 's' : ''} sit deeper than the new limit. They keep
+                working; you just can&apos;t nest anything further inside them.
+              </p>
+            )}
+          </>
         )}
       </section>
 
@@ -193,12 +254,38 @@ export default function SettingsPage() {
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Manage</h2>
         <div className="space-y-2">
-          <SettingRow href="/settings/categories" icon="🏷️" title="Categories" sub="Asset, part and document categories" />
+          {(can('roles.manage') || can('users.manage')) && (
+            <SettingRow href="/settings/access" icon="🛡️" title="Access" sub="Users, roles and rights" />
+          )}
+          {/* That page is nothing but three CRUD lists, so it has no read-only mode. */}
+          {can('categories.manage') && (
+            <SettingRow href="/settings/categories" icon="🏷️" title="Categories" sub="Asset, part and document categories" />
+          )}
           <SettingRow href="/labels" icon="🖨️" title="Labels" sub="Print QR labels, choose sheet or roll format" />
           <SettingRow href="/storage" icon="🗄️" title="Storage places" sub="The rooms, shelves and boxes themselves" />
           <SettingRow href="/documents" icon="📄" title="Documents" sub="Classify and link scanned files" />
         </div>
       </section>
+
+      {canManage && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Printed labels</h2>
+          <ActionRow
+            icon="🚫"
+            title={rotating ? 'Revoking…' : 'Revoke printed labels'}
+            sub="Stops every label already printed from logging without a sign-in"
+            danger
+            disabled={rotating}
+            onClick={revokePrintedLabels}
+          />
+          {rotateMessage && <p className="text-xs text-green-600 dark:text-green-400">{rotateMessage}</p>}
+          {rotateError && <p className="text-xs text-red-500">{rotateError}</p>}
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            Use this if a label has been photographed or a printed sheet has left the house. All
+            labels then need reprinting from <Link href="/labels" className="text-blue-500 underline">Labels</Link>.
+          </p>
+        </section>
+      )}
     </div>
   )
 }

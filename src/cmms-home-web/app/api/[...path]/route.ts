@@ -17,6 +17,13 @@ async function proxy(
   const headers = new Headers()
   const range = request.headers.get('range')
   if (range) headers.set('range', range) // let PDF viewers stream byte ranges
+  // The session lives in an HttpOnly cookie the browser sets against *this* origin, so
+  // without forwarding it every call reaches the API as an anonymous stranger.
+  const cookie = request.headers.get('cookie')
+  if (cookie) headers.set('cookie', cookie)
+  // So the sessions list names the device the user is holding rather than undici.
+  const userAgent = request.headers.get('user-agent')
+  if (userAgent) headers.set('user-agent', userAgent)
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     // Stream the body through untouched and forward the original content-type,
     // so multipart uploads (with their boundary) survive as well as JSON.
@@ -34,6 +41,13 @@ async function proxy(
   for (const h of PASS_THROUGH) {
     const v = upstream.headers.get(h)
     if (v) respHeaders.set(h, v)
+  }
+
+  // Set-Cookie is the one header that legitimately repeats, and `get` would fold the
+  // copies into one comma-joined string — which mangles them, since `Expires` dates
+  // contain a comma too. getSetCookie() keeps them separate; append preserves that.
+  for (const value of upstream.headers.getSetCookie()) {
+    respHeaders.append('set-cookie', value)
   }
 
   // Stream the body through untouched (binary-safe); 204 has no body.

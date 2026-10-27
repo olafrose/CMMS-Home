@@ -8,6 +8,8 @@
 #   PUID / PGID           : UID:GID the api runs as — must be able to write DOCS_PATH
 #   WEB_PORT              : host port to browse the app on
 #   SWAGGER_PROXY         : false = don't serve the API docs at /swagger on WEB_PORT
+#   SECURE_COOKIES        : true only behind an HTTPS reverse proxy
+#   RESET_ADMIN           : "user:password" one-shot admin create/recover (see .env.example)
 #
 # Only the web port is published. The API and DB stay on the internal network
 # (the web container proxies /api and /swagger to the api container), so don't
@@ -37,6 +39,12 @@ services:
       # Managed foldering: uploads → /documents/inbox, classify → /documents/library/<Category>/.
       # The app writes ONLY inside inbox/ and library/. Requires the rw mount below.
       - Documents__ManagedFoldering=${MANAGED_FOLDERING:-true}
+      # Authentication. Turn SecureCookies on only when serving through an HTTPS
+      # reverse proxy: the API only sees the proxy's plain-HTTP hop, so it cannot
+      # detect this itself, and a Secure cookie is never sent over plain HTTP.
+      - Auth__SecureCookies=${SECURE_COOKIES:-false}
+      # Recovery hatch -- see .env.example. Normally empty.
+      - Auth__ResetAdmin=${RESET_ADMIN:-}
     volumes:
       - ${DOCS_PATH}:/documents:rw
     depends_on:

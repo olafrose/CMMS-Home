@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -25,12 +26,13 @@ public static class StorageLocationEndpoints
                 query = query.Where(s => s.Name.ToLower().Contains(term));
             }
             return await query.OrderBy(s => s.Name).ToListAsync();
-        });
+        }).RequirePermission(Permissions.StorageRead);
 
         group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db) =>
             await db.StorageLocations.FindAsync(id) is StorageLocation loc
                 ? Results.Ok(loc)
-                : Results.NotFound());
+                : Results.NotFound())
+            .RequirePermission(Permissions.StorageRead);
 
         // Everything stored at a place: ancestors (for breadcrumbs), direct child
         // places, and the parts/tools/assets sitting directly in this place.
@@ -54,7 +56,7 @@ public static class StorageLocationEndpoints
                 .Where(e => e.StorageLocationId == id).OrderBy(e => e.Name).ToListAsync();
 
             return Results.Ok(new { location = self, ancestors, children, equipment, parts });
-        });
+        }).RequirePermission(Permissions.StorageRead);
 
         group.MapPost("/", async (SaveStorageLocationDto dto, CmmsDbContext db) =>
         {
@@ -81,7 +83,7 @@ public static class StorageLocationEndpoints
             db.StorageLocations.Add(loc);
             await db.SaveChangesAsync();
             return Results.Created($"/storage-locations/{loc.Id}", loc);
-        });
+        }).RequirePermission(Permissions.StorageWrite);
 
         group.MapPut("/{id:guid}", async (Guid id, SaveStorageLocationDto dto, CmmsDbContext db) =>
         {
@@ -114,7 +116,7 @@ public static class StorageLocationEndpoints
             loc.ParentId = dto.ParentId;
             await db.SaveChangesAsync();
             return Results.Ok(loc);
-        });
+        }).RequirePermission(Permissions.StorageWrite);
 
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
@@ -126,7 +128,7 @@ public static class StorageLocationEndpoints
             db.StorageLocations.Remove(loc); // items here have StorageLocationId set null
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        }).RequirePermission(Permissions.StorageDelete);
     }
 
     // internal: AppSettingsEndpoints reuses this to count places left over a lowered cap.

@@ -24,6 +24,10 @@ services:
       # Phase 2 managed foldering: uploads land in /documents/inbox, classifying
       # moves files into /documents/library/<Category>/. Requires the rw mount below.
       - Documents__ManagedFoldering=true
+      # Authentication. SecureCookies stays off locally: the session cookie would
+      # otherwise never be sent over plain HTTP. Set Auth__ResetAdmin="user:password"
+      # temporarily to create or recover an administrator, then remove it and restart.
+      - Auth__SecureCookies=false
     volumes:
       # Watched folder (read-WRITE for managed foldering). The app writes only in
       # its own zones (inbox/, library/); drop files in ./docs-inbox to have them scanned.

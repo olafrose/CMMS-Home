@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using CmmsHome.Api.Services;
 using CmmsHome.Api.Models;
 
 namespace CmmsHome.Api.Data;
@@ -22,6 +23,13 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<DocumentMove> DocumentMoves => Set<DocumentMove>();
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<ExternalLink> ExternalLinks => Set<ExternalLink>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<UserIdentity> UserIdentities => Set<UserIdentity>();
+    public DbSet<Role> Roles => Set<Role>();
+    public DbSet<UserRole> UserRoles => Set<UserRole>();
+    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+    public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<ServerSecret> ServerSecrets => Set<ServerSecret>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -224,5 +232,169 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .WithMany()
             .HasForeignKey(l => l.PartId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        ConfigureAuth(modelBuilder);
     }
+
+    // Accounts, roles, and the rights grid.
+    private static void ConfigureAuth(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.Username)
+            .IsUnique();
+
+        modelBuilder.Entity<User>()
+            .Property(u => u.CreatedAt)
+            .HasDefaultValueSql("now()");
+
+        modelBuilder.Entity<User>()
+            .HasMany(u => u.Roles)
+            .WithMany()
+            .UsingEntity<UserRole>();
+
+        modelBuilder.Entity<User>()
+            .HasMany(u => u.Identities)
+            .WithOne()
+            .HasForeignKey(i => i.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // A provider's subject is what a sign-in looks up, so it must be unique per
+        // provider — two local identities claiming the same username, or two OIDC
+        // identities claiming the same `sub`, is a broken login rather than a duplicate row.
+        modelBuilder.Entity<UserIdentity>()
+            .HasIndex(i => new { i.Provider, i.Subject })
+            .IsUnique();
+
+        modelBuilder.Entity<UserIdentity>()
+            .Property(i => i.CreatedAt)
+            .HasDefaultValueSql("now()");
+
+        modelBuilder.Entity<Role>()
+            .HasIndex(r => r.Name)
+            .IsUnique();
+
+        modelBuilder.Entity<RolePermission>()
+            .HasKey(p => new { p.RoleId, p.Permission });
+
+        modelBuilder.Entity<RolePermission>()
+            .HasOne<Role>()
+            .WithMany()
+            .HasForeignKey(p => p.RoleId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Looked up by hash on every authenticated request, so it carries the index.
+        modelBuilder.Entity<Session>()
+            .HasIndex(s => s.TokenHash)
+            .IsUnique();
+
+        modelBuilder.Entity<Session>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Session>()
+            .Property(s => s.CreatedAt)
+            .HasDefaultValueSql("now()");
+
+        // Attribution survives the account: deleting a user leaves their logged events in
+        // place with CreatedByUserId nulled, rather than cascading away the maintenance
+        // history — the history is the point of the app, the account is bookkeeping.
+        modelBuilder.Entity<MaintenanceEvent>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(e => e.CreatedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Single-row, like AppSettings, but deliberately NOT seeded: a HasData row would
+        // bake one label-signing key into the migration and every deployment would share
+        // it, making every printed label forgeable by anyone with the source. LabelSigner
+        // generates it on first use instead.
+        modelBuilder.Entity<ServerSecret>()
+            .Property(s => s.Id)
+            .ValueGeneratedNever();
+
+        SeedRoles(modelBuilder);
+    }
+
+    // The four roles every install starts with, and their grants.
+    //
+    // Grants are computed from the Permissions catalogue rather than written out as ~90
+    // literal rows: the seed then cannot drift out of sync with the catalogue, and adding a
+    // permission is one edit rather than two. It stays deterministic, so migrations only
+    // change when the intent does.
+    private static void SeedRoles(ModelBuilder modelBuilder)
+    {
+        var admin = new Role
+        {
+            Id = SeededRoles.Admin, Name = "Admin",
+            IsSystem = true, SortOrder = 1,
+        };
+        var member = new Role
+        {
+            Id = SeededRoles.Member, Name = "Member",
+            IsDefaultForNewUsers = true, SortOrder = 2,
+        };
+        var viewer = new Role
+        {
+            Id = SeededRoles.Viewer, Name = "Viewer",
+            SortOrder = 3,
+        };
+        var anonymous = new Role
+        {
+            Id = SeededRoles.Anonymous, Name = "Anonymous",
+            IsSystem = true, IsAnonymous = true, SortOrder = 4,
+        };
+
+        modelBuilder.Entity<Role>().HasData(admin, member, viewer, anonymous);
+
+        // Admin: everything. Member: everything day-to-day, but not administering the app.
+        // Viewer: read-only, and not the sensitive documents. Anonymous: exactly enough to
+        // scan a label, log maintenance, and see what was logged — no browsing.
+        var adminGrants = Permissions.AllKeys;
+
+        var memberGrants = Permissions.AllKeys
+            .Except([Permissions.UsersManage, Permissions.RolesManage, Permissions.SettingsManage]);
+
+        string[] viewerGrants =
+        [
+            Permissions.EquipmentRead, Permissions.EquipmentList,
+            Permissions.EventsRead,
+            Permissions.RulesRead,
+            Permissions.StorageRead,
+            Permissions.PartsRead, Permissions.PartsList,
+            Permissions.DocumentsRead, Permissions.DocumentsList, Permissions.DocumentsDownload,
+            Permissions.CategoriesRead,
+            Permissions.LinksRead,
+            Permissions.SettingsRead,
+        ];
+
+        string[] anonymousGrants =
+        [
+            Permissions.EquipmentRead,
+            Permissions.EventsRead,
+            Permissions.EventsCreate,
+            Permissions.RulesRead,
+        ];
+
+        modelBuilder.Entity<RolePermission>().HasData(
+            Grants(admin.Id, adminGrants)
+                .Concat(Grants(member.Id, memberGrants))
+                .Concat(Grants(viewer.Id, viewerGrants))
+                .Concat(Grants(anonymous.Id, anonymousGrants))
+                .ToArray());
+
+        static IEnumerable<RolePermission> Grants(Guid roleId, IEnumerable<string> permissions) =>
+            permissions.OrderBy(p => p, StringComparer.Ordinal)
+                .Select(p => new RolePermission { RoleId = roleId, Permission = p });
+    }
+}
+
+// Fixed ids for the seeded roles, so code and migrations can refer to them.
+public static class SeededRoles
+{
+    public static readonly Guid Admin = new("a0000000-0000-0000-0000-000000000001");
+    public static readonly Guid Member = new("a0000000-0000-0000-0000-000000000002");
+    public static readonly Guid Viewer = new("a0000000-0000-0000-0000-000000000003");
+    public static readonly Guid Anonymous = new("a0000000-0000-0000-0000-000000000004");
 }

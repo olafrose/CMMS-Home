@@ -1,7 +1,9 @@
 using System.Text.Json.Serialization;
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Endpoints;
+using CmmsHome.Api.Models;
 using CmmsHome.Api.Services;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 
@@ -32,6 +34,17 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
 
+// Authentication and the rights grid. Hand-rolled rather than ASP.NET Identity so model
+// classes stay free of framework types; only password hashing is borrowed (PasswordHasher<T>
+// ships in the shared framework and constrains nothing but `class`).
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<IPasswordHasher<UserIdentity>, PasswordHasher<UserIdentity>>();
+builder.Services.AddSingleton<SetupState>();
+builder.Services.AddScoped<ActorAccessor>();
+builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<LabelSigner>();
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddCors(opt => opt.AddDefaultPolicy(p =>
@@ -55,8 +68,14 @@ app.UseSwagger(o => o.PreSerializeFilters.Add((doc, req) =>
 app.UseSwaggerUI();
 
 using (var scope = app.Services.CreateScope())
+{
     scope.ServiceProvider.GetRequiredService<CmmsDbContext>().Database.Migrate();
+    await scope.ServiceProvider.ApplyAdminResetAsync();
+}
 
+app.MapAuthEndpoints();
+app.MapUserEndpoints();
+app.MapRoleEndpoints();
 app.MapEquipmentEndpoints();
 app.MapEventEndpoints();
 app.MapRuleEndpoints();
@@ -69,5 +88,10 @@ app.MapDocumentEndpoints();
 app.MapDocumentCategoryEndpoints();
 app.MapAppSettingsEndpoints();
 app.MapExternalLinkEndpoints();
+
+// Fails startup if any endpoint above was mapped without a permission requirement. The hole
+// it catches is invisible in review — a new route simply works, wide open — so turning it
+// into a crash-on-boot is worth the startup cost.
+app.AuditPermissionCoverage();
 
 app.Run();

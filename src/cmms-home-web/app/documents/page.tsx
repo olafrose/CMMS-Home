@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 import { DocumentPreviewButton } from '@/components/DocumentPreview'
 import EntityCombobox from '@/components/EntityCombobox'
 import { categoryBadgeStyle } from '@/lib/documents'
@@ -64,6 +65,7 @@ interface ClassifyFormProps {
 }
 
 function ClassifyForm({ doc, equipment, parts, categories, onClassified, onCancel }: ClassifyFormProps) {
+  const { can } = useAuth()
   const [cats, setCats] = useState<DocumentCategory[]>(categories)
   const [categoryId, setCategoryId] = useState<string | null>(doc.categoryId ?? null)
   const [title, setTitle] = useState(doc.title ?? '')
@@ -133,7 +135,8 @@ function ClassifyForm({ doc, equipment, parts, categories, onClassified, onCance
           value={categoryId}
           onChange={setCategoryId}
           onCreate={async (name) => { const c = await api.documentCategories.create(name); setCats(prev => [...prev, c]); return c }}
-          placeholder="Search or create…"
+          allowCreate={can('categories.manage')}
+          placeholder={can('categories.manage') ? 'Search or create…' : 'Search…'}
         />
       </div>
       <div>
@@ -212,6 +215,9 @@ interface DocCardProps {
 }
 
 function DocCard({ doc, equipment, parts, categories, onRemove, onUpdate }: DocCardProps) {
+  const { can } = useAuth()
+  // Classify, ignore and move-to-inbox are all the one filing permission on the API.
+  const canFile = can('documents.classify')
   const [classifying, setClassifying] = useState(false)
   const [ignoring, setIgnoring] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -279,7 +285,7 @@ function DocCard({ doc, equipment, parts, categories, onRemove, onUpdate }: DocC
       </div>
       <div className="flex items-center gap-2 pt-1">
         <DocumentPreviewButton doc={doc} />
-        {(doc.status === 'Classified' || doc.status === 'PendingMove') && (
+        {canFile && (doc.status === 'Classified' || doc.status === 'PendingMove') && (
           <>
             <span className="text-slate-300 dark:text-slate-600">·</span>
             <button
@@ -292,7 +298,7 @@ function DocCard({ doc, equipment, parts, categories, onRemove, onUpdate }: DocC
             </button>
           </>
         )}
-        {doc.status === 'Unclassified' && (
+        {canFile && doc.status === 'Unclassified' && (
           <>
             <span className="text-slate-300 dark:text-slate-600">·</span>
             <button
@@ -313,14 +319,16 @@ function DocCard({ doc, equipment, parts, categories, onRemove, onUpdate }: DocC
             </button>
           </>
         )}
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={deleting}
-          className="ml-auto text-xs text-slate-400 dark:text-slate-500 hover:text-red-500 disabled:opacity-50"
-        >
-          {deleting ? 'Removing…' : 'Delete'}
-        </button>
+        {can('documents.delete') && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="ml-auto text-xs text-slate-400 dark:text-slate-500 hover:text-red-500 disabled:opacity-50"
+          >
+            {deleting ? 'Removing…' : 'Delete'}
+          </button>
+        )}
       </div>
       {classifying && (
         <ClassifyForm
@@ -337,6 +345,9 @@ function DocCard({ doc, equipment, parts, categories, onRemove, onUpdate }: DocC
 }
 
 export default function DocumentsPage() {
+  const { can } = useAuth()
+  const canUpload = can('documents.upload')
+  const canScan = can('documents.scan')
   const [docs, setDocs] = useState<Document[]>([])
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [parts, setParts] = useState<Part[]>([])
@@ -438,33 +449,46 @@ export default function DocumentsPage() {
     window.dispatchEvent(new Event('documents:changed'))
   }
 
+  // The empty state points at whichever way in this user actually has.
+  const emptyHint = statusFilter !== 'Unclassified' ? 'Nothing to show for this filter.'
+    : canUpload && canScan ? 'Tap Upload (or drop files here) — or drop them on the NAS share and tap Rescan.'
+    : canUpload ? 'Tap Upload, or drop files here.'
+    : canScan ? 'Drop files on the NAS share and tap Rescan.'
+    : 'Nothing to show for this filter.'
+
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Documents</h1>
         <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={ALLOWED_EXTENSIONS.join(',')}
-            className="hidden"
-            onChange={e => { if (e.target.files) handleUpload(e.target.files); e.target.value = '' }}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow disabled:opacity-50"
-          >
-            {uploading ? 'Uploading…' : '⬆ Upload'}
-          </button>
-          <button
-            onClick={handleRescan}
-            disabled={scanning}
-            className="text-sm font-semibold px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 disabled:opacity-50"
-          >
-            {scanning ? 'Scanning…' : 'Rescan'}
-          </button>
+          {canUpload && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={ALLOWED_EXTENSIONS.join(',')}
+                className="hidden"
+                onChange={e => { if (e.target.files) handleUpload(e.target.files); e.target.value = '' }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow disabled:opacity-50"
+              >
+                {uploading ? 'Uploading…' : '⬆ Upload'}
+              </button>
+            </>
+          )}
+          {canScan && (
+            <button
+              onClick={handleRescan}
+              disabled={scanning}
+              className="text-sm font-semibold px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 disabled:opacity-50"
+            >
+              {scanning ? 'Scanning…' : 'Rescan'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -497,7 +521,7 @@ export default function DocumentsPage() {
         ))}
       </div>
 
-      {!loading && statusFilter === 'Missing' && docs.length > 0 && (
+      {!loading && statusFilter === 'Missing' && docs.length > 0 && can('documents.delete') && (
         <div className="mb-3 flex justify-end">
           <button
             onClick={handlePruneMissing}
@@ -509,10 +533,12 @@ export default function DocumentsPage() {
         </div>
       )}
 
+      {/* Drop-to-upload is an invisible affordance, so without the permission the handlers
+          come off entirely rather than accepting a drop that would only 403. */}
       <div
-        onDragOver={e => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={e => { e.preventDefault(); setDragging(false) }}
-        onDrop={onDrop}
+        onDragOver={canUpload ? (e => { e.preventDefault(); setDragging(true) }) : undefined}
+        onDragLeave={canUpload ? (e => { e.preventDefault(); setDragging(false) }) : undefined}
+        onDrop={canUpload ? onDrop : undefined}
         className={dragging ? 'rounded-xl ring-2 ring-blue-400 ring-dashed bg-blue-50/50 dark:bg-blue-900/10' : ''}
       >
         {loading && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}
@@ -521,11 +547,7 @@ export default function DocumentsPage() {
           <div className="text-center py-16 text-slate-400">
             <p className="text-4xl mb-3">📄</p>
             <p className="font-medium">No documents</p>
-            <p className="text-sm mt-1">
-              {statusFilter === 'Unclassified'
-                ? 'Tap Upload (or drop files here) — or drop them on the NAS share and tap Rescan.'
-                : 'Nothing to show for this filter.'}
-            </p>
+            <p className="text-sm mt-1">{emptyHint}</p>
           </div>
         )}
 

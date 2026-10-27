@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -28,13 +29,17 @@ public static class EquipmentEndpoints
             if (maintained == true) q = q.Where(e => e.Rules.Any());
 
             return await q.OrderBy(e => e.Name).ToListAsync();
-        });
+        }).RequirePermission(Permissions.EquipmentList);
 
-        group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db) =>
+        group.MapGet("/{id:guid}", async (Guid id, CmmsDbContext db, ActorAccessor accessor) =>
         {
+            // Reachable by a label scan, so the item asked for must be the item scanned.
+            var actor = await accessor.GetAsync();
+            if (!actor.MayTouchEquipment(id)) return LabelScope.Denied();
+
             var e = await LoadOne(db, id);
             return e is not null ? Results.Ok(e) : Results.NotFound();
-        });
+        }).RequirePermission(Permissions.EquipmentRead).AllowLabelScope();
 
         group.MapPost("/", async (SaveEquipmentDto dto, CmmsDbContext db) =>
         {
@@ -62,7 +67,7 @@ public static class EquipmentEndpoints
             db.Equipment.Add(e);
             await db.SaveChangesAsync();
             return Results.Created($"/equipment/{e.Id}", await LoadOne(db, e.Id));
-        });
+        }).RequirePermission(Permissions.EquipmentWrite);
 
         group.MapPut("/{id:guid}", async (Guid id, SaveEquipmentDto dto, CmmsDbContext db) =>
         {
@@ -87,7 +92,7 @@ public static class EquipmentEndpoints
 
             await db.SaveChangesAsync();
             return Results.Ok(await LoadOne(db, id));
-        });
+        }).RequirePermission(Permissions.EquipmentWrite);
 
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
@@ -96,7 +101,7 @@ public static class EquipmentEndpoints
             db.Equipment.Remove(e);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        }).RequirePermission(Permissions.EquipmentDelete);
 
         group.MapPost("/{id:guid}/checkout", async (Guid id, CheckoutDto dto, CmmsDbContext db) =>
         {
@@ -111,7 +116,7 @@ public static class EquipmentEndpoints
             db.EquipmentLoans.Add(new EquipmentLoan { Id = Guid.NewGuid(), EquipmentId = id, Borrower = dto.Borrower.Trim() });
             await db.SaveChangesAsync();
             return Results.Ok(await LoadOne(db, id));
-        });
+        }).RequirePermission(Permissions.EquipmentLend);
 
         group.MapPost("/{id:guid}/return", async (Guid id, CmmsDbContext db) =>
         {
@@ -124,7 +129,7 @@ public static class EquipmentEndpoints
             open.ReturnedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
             return Results.Ok(await LoadOne(db, id));
-        });
+        }).RequirePermission(Permissions.EquipmentLend);
     }
 
     // Null when the warranty fields are coherent, otherwise the problems.

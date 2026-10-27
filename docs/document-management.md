@@ -17,8 +17,7 @@ where the implementation diverged from the original plan, the notes below say so
   page's list would mix direct and inherited paperwork with nothing to distinguish them.
 - **Category is a managed entity, not an enum:** `DocumentCategory { Name,
   Sensitive, Color }` (CRUD on `/document-categories`), replacing the fixed
-  `Manual|Warranty|…` enum. `Sensitive` is stored but not yet enforced (waits on
-  auth).
+  `Manual|Warranty|…` enum. `Sensitive` is now enforced — see `docs/authentication.md`.
 - **Phase 2 foldering keys on category, not asset:** the managed tree is
   `library/<Category>/<file>` (a document has exactly one category; it may link to
   several equipment, which the folder tree can't represent). Files that live
@@ -63,7 +62,7 @@ NAS SMB share  ──mounted──>  API container  ──periodic scan──>  
 | Linking model | **B — join table** (`DocumentLink`) | One receipt/manual can span several assets, and a doc can be both an asset manual and referenced by an event. Worth the small extra code. |
 | File identity | **Content hash (SHA-256)** is the durable identity, not the path | Critical once CMMS moves files (Phase 2): a moved/renamed file is re-linked by hash, so classification survives. Also dedupes. |
 | Read-only vs managed | **Phased.** Phase 1 indexes in place (read-only). Phase 2 adds opt-in managed moves. | Build trust in the read loop before letting the app write to the NAS. Most value lands in Phase 1 at zero risk to files. |
-| Privacy (no-auth posture) | **Non-issue.** | App is single-tenant; the whole household is expected to see all receipts/manuals. Consistent with current posture. |
+| Privacy (no-auth posture) | ~~Non-issue.~~ **Resolved by auth.** | Was: single-tenant, the whole household sees everything. Now `Sensitive` actually bites — without `documents.read_sensitive` those documents are absent from lists and 404 (not 403, which would confirm they exist) on fetch and download. See `docs/authentication.md`. |
 
 ## Data model (metadata only)
 

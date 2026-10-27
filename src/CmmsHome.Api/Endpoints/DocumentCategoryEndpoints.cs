@@ -1,5 +1,6 @@
 using CmmsHome.Api.Data;
 using CmmsHome.Api.Models;
+using CmmsHome.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmmsHome.Api.Endpoints;
@@ -11,7 +12,8 @@ public static class DocumentCategoryEndpoints
         var group = app.MapGroup("/document-categories").WithTags("DocumentCategories");
 
         group.MapGet("/", async (CmmsDbContext db) =>
-            await db.DocumentCategories.OrderBy(c => c.Name).ToListAsync());
+            await db.DocumentCategories.OrderBy(c => c.Name).ToListAsync())
+            .RequirePermission(Permissions.CategoriesRead);
 
         group.MapPost("/", async (SaveDocumentCategoryDto dto, CmmsDbContext db) =>
         {
@@ -28,7 +30,7 @@ public static class DocumentCategoryEndpoints
             db.DocumentCategories.Add(cat);
             await db.SaveChangesAsync();
             return Results.Created($"/document-categories/{cat.Id}", cat);
-        });
+        }).RequirePermission(Permissions.CategoriesManage);
 
         group.MapPut("/{id:guid}", async (Guid id, SaveDocumentCategoryDto dto, CmmsDbContext db) =>
         {
@@ -40,7 +42,7 @@ public static class DocumentCategoryEndpoints
             cat.Color = string.IsNullOrWhiteSpace(dto.Color) ? null : dto.Color.Trim();
             await db.SaveChangesAsync();
             return Results.Ok(cat);
-        });
+        }).RequirePermission(Permissions.CategoriesManage);
 
         group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db) =>
         {
@@ -49,7 +51,7 @@ public static class DocumentCategoryEndpoints
             db.DocumentCategories.Remove(cat); // documents in this category have CategoryId set null
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        }).RequirePermission(Permissions.CategoriesManage);
     }
 }
 
