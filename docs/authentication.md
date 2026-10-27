@@ -258,6 +258,15 @@ auth round-trip would put a request in front of every scan.
 redirect for page routes only, per Next's own guidance that Proxy must not be the sole
 defence. The QR paths are exempt.
 
+Cookies alone can't tell whether *not* signing in is enough, and an admin can let Anonymous
+browse. So a visit carrying no cookie at all asks the API's `/auth/me` what Anonymous may do,
+cached for 15 s, and skips the redirect when Anonymous holds a **browse** permission
+(`equipment.list`, `parts.list`, `documents.list` or `storage.read`). The seeded quick-log grants
+are deliberately not on that list: a label-only Anonymous still sends a browsing visitor to
+sign in. A grid change reaches the redirect within the cache window. An unreachable API falls
+back to redirecting, the old behaviour. Pages Anonymous can reach but not use show their own
+denial, as they do for a signed-in user.
+
 **Service-worker caching mattered here.** `@ducanh2912/next-pwa`'s default runtime caching
 stores every same-origin `/api/*` GET in a cache named `apis` (NetworkFirst), which would
 leave authorised responses on the device to be served offline after sign-out. `/api` is now

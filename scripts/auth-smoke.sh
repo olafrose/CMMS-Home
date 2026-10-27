@@ -753,6 +753,26 @@ expect "...then the place can go" "204" "$(status DELETE "/storage-locations/$d_
 status DELETE "/equipment/$d_eq" admin >/dev/null
 
 # ---------------------------------------------------------------------------------------
+section "sign-in redirect follows the Anonymous role (web proxy)"
+# Only meaningful through the web port: the redirect lives in the Next.js proxy, not the API.
+if [[ "$BASE" == */api ]]; then
+  WEB="${BASE%/api}"
+  page() { curl -s -o /dev/null -w '%{http_code}' "$WEB$1"; }
+  anon_grants() { body GET /roles admin | node -e '
+    let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.stringify(JSON.parse(s).roles.find(r=>r.isAnonymous).granted)))'; }
+  original=$(anon_grants)
+  # The proxy caches its answer for 15 s; wait it out after each grid change.
+  expect "quick-log-only Anonymous: /assets redirects to sign in" "307" "$(sleep 16; page /assets)"
+  browse=$(printf '%s' "$original" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.stringify([...new Set([...JSON.parse(s),"equipment.list"])])))')
+  status PUT /roles/permissions admin "{\"grants\":{\"$anon_role\":$browse}}" >/dev/null
+  expect "Anonymous may browse: /assets renders" "200" "$(sleep 16; page /assets)"
+  status PUT /roles/permissions admin "{\"grants\":{\"$anon_role\":$original}}" >/dev/null
+  expect "browsing revoked again: redirects" "307" "$(sleep 16; page /assets)"
+else
+  SKIP=$((SKIP + 1)); echo "  skipped: run with BASE=<web>/api to test the web proxy"
+fi
+
+# ---------------------------------------------------------------------------------------
 section "sign out"
 expect "POST /auth/logout" "204" "$(status POST /auth/logout smokeviewer)"
 expect "the session is dead immediately" "401" "$(status GET /equipment smokeviewer)"

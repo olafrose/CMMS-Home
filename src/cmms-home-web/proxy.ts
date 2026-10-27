@@ -8,7 +8,12 @@ import type { NextRequest } from 'next/server'
  * whether a session cookie is present, not whether it is valid or what it may do. The API
  * enforces every permission independently, so the worst a wrong answer here costs is a
  * needless bounce to /login (or a page that renders and then shows its own denial).
- * Deliberately no API call — Proxy runs on every request including prefetches.
+ *
+ * The one thing cookies can't say is whether *not* signing in is enough. "Not signed in" is a
+ * role in the rights grid, and an admin can let it browse; bouncing every cookieless visit to
+ * /login made that setting unreachable from the browser. So a visit without any cookie asks
+ * the API what Anonymous may do — cached briefly, so it is one call per CACHE_MS, not one per
+ * request (Proxy also runs for every prefetch).
  */
 const SESSION_COOKIE = 'cmms_session'
 
@@ -57,7 +62,40 @@ const PUBLIC_PREFIXES = [
  */
 const QR_PATH = /^\/(?:(?:equipment|assets)\/(?!new$)[^/]+(?:\/log)?|storage\/[^/]+\/log)$/
 
-export function proxy(request: NextRequest) {
+const API_URL = process.env.API_URL ?? 'http://localhost:8080'
+
+/**
+ * Permissions that mean Anonymous can *browse* — reach a list page — rather than only use the
+ * label quick-log. The seeded Anonymous grants (view one item, view history, log maintenance,
+ * view schedules) are deliberately not here: those are what a scanned label needs, and holding
+ * only them must still send a browsing visitor to sign in.
+ */
+const BROWSE_PERMISSIONS = ['equipment.list', 'parts.list', 'documents.list', 'storage.read']
+
+/** How long the answer is reused. A grid change reaches the redirect within this. */
+const CACHE_MS = 15_000
+
+let anonymousBrowse: { value: boolean; at: number } | null = null
+
+async function anonymousCanBrowse(): Promise<boolean> {
+  if (anonymousBrowse && Date.now() - anonymousBrowse.at < CACHE_MS) return anonymousBrowse.value
+  let value = false
+  try {
+    // No cookies forwarded: this asks about the Anonymous role itself, not the visitor.
+    const res = await fetch(`${API_URL}/auth/me`, { cache: 'no-store', signal: AbortSignal.timeout(2000) })
+    if (res.ok) {
+      const me = (await res.json()) as { permissions?: string[]; setupRequired?: boolean }
+      // First run: /login forwards to /setup, which is where the operator needs to be.
+      value = !me.setupRequired && (me.permissions ?? []).some((p) => BROWSE_PERMISSIONS.includes(p))
+    }
+  } catch {
+    // API unreachable: fall back to sending them to sign in, as before.
+  }
+  anonymousBrowse = { value, at: Date.now() }
+  return value
+}
+
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   if (
@@ -68,7 +106,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  if (!request.cookies.has(SESSION_COOKIE) && !request.cookies.has(LABEL_COOKIE)) {
+  if (!request.cookies.has(SESSION_COOKIE) && !request.cookies.has(LABEL_COOKIE) && !(await anonymousCanBrowse())) {
     const login = new URL('/login', request.nextUrl)
     // So sign-in can return them to what they were actually after.
     login.searchParams.set('next', pathname + request.nextUrl.search)
