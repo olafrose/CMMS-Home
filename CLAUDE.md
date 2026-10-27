@@ -54,6 +54,7 @@ Single-project Minimal API. No service layer — endpoints call `CmmsDbContext` 
 │   ├── MaintenanceEvent.cs  # type: maintenance | repair | cleaning | replacement
 │   ├── MaintenanceRule.cs   # computed Status property (Ok/Upcoming/Due/Overdue)
 │   ├── ExternalLink.cs      # web link (url + label) on one Equipment or Part
+│   ├── Meter.cs / MeterReading.cs  # cumulative counters (hours, km, cycles) + their readings
 │   ├── AppSettings.cs       # single-row user config + AbsoluteStorageMaxDepth ceiling
 │   ├── User.cs / UserIdentity.cs  # account; credentials split out for future IdPs
 │   ├── Role.cs / UserRole.cs / RolePermission.cs  # the grid; Anonymous is a Role
@@ -68,13 +69,16 @@ Single-project Minimal API. No service layer — endpoints call `CmmsDbContext` 
 │   ├── AccountService.cs    # password hashing, session issue, cookie options
 │   ├── ApiTokenService.cs   # mint/validate/list API tokens (service + personal)
 │   ├── LabelSigner.cs       # printed-label tokens + the scope a scan grants
+│   ├── MeterService.cs      # record/validate readings, rebase/replace, value-at-time, rates
+│   ├── MeterRetention.cs    # tiered thinning of old readings + its daily hosted service
 │   └── AdminReset.cs        # Auth__ResetAdmin recovery hatch, applied at startup
 └── Endpoints/               # One static class per resource; extension methods on WebApplication
     ├── EquipmentEndpoints.cs      # CRUD + ?kind=/?location_id=/?on_loan=/?maintained= + checkout/return
     ├── StorageLocationEndpoints.cs # CRUD + move (cycle/depth guards) + /{id}/contents
-    ├── EventEndpoints.cs    # POST + GET (filter by ?equipment_id=) + GET/:id
+    ├── EventEndpoints.cs    # POST + GET (filter by ?equipment_id=) + GET/PUT/DELETE /:id
     ├── RuleEndpoints.cs     # POST + GET (filter by ?equipment_id=) + PUT/:id
     ├── ExternalLinkEndpoints.cs # CRUD + ?equipment_id=/?part_id=; http(s)-only URL guard
+    ├── MeterEndpoints.cs    # meters CRUD + readings (single/batch) + rebase/replace
     ├── AppSettingsEndpoints.cs  # GET/PUT singleton (no /{id})
     ├── AuthEndpoints.cs     # login/logout/setup/me/password + label session & tokens
     ├── UserEndpoints.cs     # account admin; refuses to strand the last admin
@@ -101,6 +105,8 @@ The `/api` proxy forwards `Authorization`, so API tokens work through the web po
 ├── components/StorageLocationPicker.tsx # typeahead + breadcrumb place picker
 ├── components/ManagedNameList.tsx # generic CRUD list over an {id,name} lookup table
 ├── components/ExternalLinkList.tsx # add/edit/delete web links for one equipment or part
+├── components/MeterList.tsx # an item's meters: current value, record, history, rebase/replace
+├── lib/meters.ts            # meter/usage formatting (never re-derives the server's numbers)
 ├── components/ApiTokenManager.tsx  # list/mint/revoke API tokens (Access → Accounts, /account)
 └── app/
     ├── layout.tsx           # Root layout: PWA meta, BottomNav
@@ -167,11 +173,15 @@ Equipment           { Id UUID, Name*, Kind(Asset|Tool|Both), CategoryId?→Categ
 EquipmentUsedOn     { EquipmentId, UsedOnEquipmentId }        # m:n self-link — assets a tool is used on
 EquipmentLoan       { Id, EquipmentId, Borrower*, LoanedAt (default now()), ReturnedAt? }
 MaintenanceEvent    { Id, EquipmentId? | StorageLocationId?, Type(maintenance|repair|cleaning|replacement), Note?, PhotoUrl?, CreatedAt }
-MaintenanceRule     { Id, EquipmentId? | StorageLocationId?, Name?, ScheduleType(Interval|DueDate),
+MaintenanceRule     { Id, EquipmentId? | StorageLocationId?, Name?, ScheduleType(Interval|DueDate|Usage),
                       IntervalValue, IntervalUnit(Days|Weeks|Months|Years), LastDoneAt?,
-                      NextDueAt?, DueWindowValue, DueWindowUnit, ReminderLeadValue, ReminderLeadUnit }
+                      NextDueAt?, DueWindowValue, DueWindowUnit, ReminderLeadValue, ReminderLeadUnit,
+                      MeterId?, UsageInterval, LastDoneValue?, UsageGrace, UsageReminderLead }   # Usage: see Meters
+Meter               { Id, EquipmentId, Name*, Unit*, Offset, BaselineAt, CurrentValue?, CurrentReadAt?, RatePerDay? }
+MeterReading        { Id, MeterId, RawValue, Value, ReadAt, RecordedAt, Source?, CreatedByUserId? }
 ExternalLink        { Id, Url*, Label*, EquipmentId? | PartId?, CreatedAt }   # user-entered web link
-AppSettings         { Id=1, StorageMaxDepth, PathShorteningMode(Full|LastNSegments), PathShorteningSegments }
+AppSettings         { Id=1, StorageMaxDepth, PathShorteningMode(Full|LastNSegments), PathShorteningSegments,
+                      MeterFullDetailDays, MeterDailyDays, MeterWeeklyDays }   # meter reading retention
 User                { Id, Username*, DisplayName?, Kind(Person|Service), IsActive, CreatedAt, LastLoginAt? }   # no credentials here
 UserIdentity        { Id, UserId, Provider, Subject, PasswordHash?, CreatedAt, LastUsedAt? }
 Role                { Id, Name*, IsSystem, IsAnonymous, IsDefaultForNewUsers, SortOrder }
@@ -241,8 +251,11 @@ seeded row sets them all, and a DB default on `PathShorteningMode` would misfire
 ```
 Equipment:   POST/GET /equipment (?kind=asset|tool, ?location_id=, ?on_loan=, ?maintained=)
              |  GET/PUT/DELETE /equipment/{id}  |  POST /equipment/{id}/checkout, /equipment/{id}/return
-Events:      POST /events  |  GET /events (?equipment_id=, ?storage_location_id=)  |  GET/PUT /events/{id}
+Events:      POST /events  |  GET /events (?equipment_id=, ?storage_location_id=)  |  GET/PUT/DELETE /events/{id}
 Rules:       POST /rules  |  GET /rules (?equipment_id=, ?storage_location_id=)  |  PUT/DELETE /rules/{id}
+Meters:      CRUD /meters (?equipment_id=)  |  GET/POST /meters/{id}/readings  |  POST /meters/readings (batch)
+             |  POST /meters/{id}/rebase, /meters/{id}/replace  |  DELETE /meters/{id}/readings/{rid}
+             |  POST /meters/prune   # retention now, settings.manage
 StorageLocations: CRUD /storage-locations (?parent_id=, ?q=)  |  GET /storage-locations/{id}/contents
 Categories:  CRUD /categories
 Parts:       POST/GET /parts (?equipment_id=, ?location_id=, ?low_stock=)  |  GET/PUT/DELETE /parts/{id}
@@ -363,7 +376,13 @@ for a readable 400. Logging an event advances Interval rules on the **same** tar
   deferred to the planned analytics feature.
 - **Deleting a place with history is refused**, not cascaded (FKs are `Restrict`, unlike
   Equipment's `Cascade`): tidying the storage tree must not take years of history with it.
-  Schedules just need deleting first; events can't be deleted, so a place with events stays.
+  Schedules just need deleting first; events only with `events.delete` (Admin-only by default),
+  a deliberate act of its own — never a side effect of removing the place.
+- **Deleting an event undoes logging it, nothing more** (`DELETE /events/{id}`, one transaction):
+  parts it consumed go back into stock, and Interval/Usage rules whose `LastDoneAt` *is* that
+  event's time revert to the previous remaining entry on the target (or to a later meter
+  replacement, or to "never done"). Rules baselined by anything else are left alone. Document
+  links cascade away (the documents survive), and meter readings are kept.
 - Labels: a place token signs `location:{id}` and scopes a scan to that one place (not its
   contents). Only the place label's log QR (`/storage/{id}/log`) carries it — see
   `docs/authentication.md`.
@@ -386,6 +405,36 @@ not maintenance ownership. Picked with `EquipmentMultiSelect`. `ToolCategory` fo
 `Category` was promoted from a free-text field to a first-class entity (managed at
 `/settings/categories`).
 
+## Meters & usage schedules
+
+Full design and the Home Assistant recipe: `docs/meters.md`. The parts that bite:
+
+- **Readings are cumulative totals, never increments**, so retries are harmless. The API
+  takes the *raw* device value and adds `Meter.Offset`. A lower value is a **409**, never
+  guessed at.
+- **Two different "back to 0"s.** `rebase`: the counter reset on the same device, and the offset
+  keeps the total climbing, so schedules are untouched. `replace`: a new device, so the meter
+  restarts at 0, `BaselineAt` moves, and **every usage rule on it is rebased**. Readings before
+  `BaselineAt` are history only.
+- `Meter.CurrentValue/CurrentReadAt/RatePerDay` are denormalised by `MeterService` on every
+  write, so `MaintenanceRule.Status` stays a pure getter. **Every query returning rules must
+  `.Include(r => r.Meter)`**, or a Usage rule silently reads as "never done".
+- Usage status lives in `MaintenanceRule.cs` with the rest: `dueValue`/`overdueValue`/
+  `remainingValue`, forecast `dueAt`/`overdueAt` (instants, not day-granular), and an optional
+  calendar ceiling with `dueReason`. The frontend formats them via `lib/meters.ts` and never
+  re-derives them.
+- An idle push (same value as the latest) writes no row; it only moves `CurrentReadAt`.
+- Logging an event reads the meters at `MeterService.MeterTimeFor(occurredAt)`: the form sends a
+  bare date, so that's end of day, or now if today, not midnight. Typed readings and the schedule
+  advance share one transaction with the event.
+- Rule→Meter is **NO ACTION, not Restrict**: deleting an item cascades to both, and RESTRICT is
+  checked mid-cascade.
+- **Readings are thinned with age** (`MeterRetention`, daily, plus `POST /meters/prune`): all are
+  kept for 90 days, then the last per day / week / month, per the three `AppSettings` windows.
+  `rebase`/`replaced`/`event`/`manual` readings and each meter's first reading are never thinned.
+  So `ValueAtAsync` **interpolates** between kept readings rather than stepping. Detailed run
+  history is deliberately left to the reporting system (Home Assistant's long-term statistics).
+
 ## Settings
 
 `/settings` is the config hub and the app's only *server-side* user configuration —
@@ -396,6 +445,7 @@ print preferences (`labels.design` / `labels.formatId`) and the theme (`theme`, 
 - **Storage** — `StorageMaxDepth`.
 - **Location display** — `PathShorteningMode` + `PathShorteningSegments`, previewed live
   against the user's own deepest place.
+- **Meter history** — the three retention windows, plus "Thin now" (`POST /meters/prune`).
 - **`/settings/categories`** — the asset/part/document category lists, stacked
   `ManagedNameList`s (a separate sub-page rather than one long scroll, since it's three
   lists). `/categories` client-redirects here.
@@ -469,5 +519,7 @@ bite you if you don't know them:
 
 ## Out of Scope (MVP)
 
-Home Assistant integration, OBD2/vehicle diagnostics, operating hours tracking, AI features.
+Home Assistant integration (CMMS@home exposes the API — meters, tokens — but does not
+integrate with HA itself), OBD2/vehicle diagnostics, AI features. Operating-hours tracking
+*is* in scope now: see Meters & usage schedules.
 External identity providers are not wired, but the seam exists (see Authentication).

@@ -29,6 +29,8 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<Meter> Meters => Set<Meter>();
+    public DbSet<MeterReading> MeterReadings => Set<MeterReading>();
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
     public DbSet<ApiTokenPermission> ApiTokenPermissions => Set<ApiTokenPermission>();
     public DbSet<ServerSecret> ServerSecrets => Set<ServerSecret>();
@@ -81,6 +83,16 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
         modelBuilder.Entity<MaintenanceRule>()
             .ToTable(t => t.HasCheckConstraint("CK_Rules_OneTarget",
                 "num_nonnulls(\"EquipmentId\", \"StorageLocationId\") = 1"));
+
+        // A Usage rule names its meter and nothing else does — a meter id on a time-based
+        // rule would be ignored by the status maths, which is a lie worth refusing. 2 is
+        // ScheduleType.Usage (stored as an integer). That the meter belongs to the rule's own
+        // equipment is checked by RuleEndpoints; a check constraint can't follow the FK.
+        modelBuilder.Entity<MaintenanceRule>()
+            .ToTable(t => t.HasCheckConstraint("CK_Rules_UsageMeter",
+                "(\"ScheduleType\" = 2) = (\"MeterId\" IS NOT NULL)"));
+
+        ConfigureMeters(modelBuilder);
 
         modelBuilder.Entity<Equipment>()
             .HasMany(e => e.Loans)
@@ -265,6 +277,51 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
         ConfigureAuth(modelBuilder);
     }
 
+    // Meters and their readings (usage-based schedules count against them).
+    private static void ConfigureMeters(ModelBuilder modelBuilder)
+    {
+        // Deleting the equipment takes its meters and their history with it, like its events.
+        modelBuilder.Entity<Meter>()
+            .HasOne<Equipment>()
+            .WithMany()
+            .HasForeignKey(m => m.EquipmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Meter>()
+            .Property(m => m.CreatedAt)
+            .HasDefaultValueSql("now()");
+
+        // A schedule counting against a meter must not quietly lose it; MeterEndpoints refuses
+        // with a readable message first, and this is the backstop. NoAction, not Restrict:
+        // deleting the *item* cascades to both its rules and its meters, and Postgres checks
+        // RESTRICT immediately, mid-cascade — whether that failed would depend on which
+        // cascade ran first. NO ACTION is checked at the end of the statement, once both are
+        // gone, and still refuses deleting a meter on its own.
+        modelBuilder.Entity<MaintenanceRule>()
+            .HasOne(r => r.Meter)
+            .WithMany()
+            .HasForeignKey(r => r.MeterId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<MeterReading>()
+            .HasOne<Meter>()
+            .WithMany()
+            .HasForeignKey(r => r.MeterId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // One reading per meter per instant: what makes a retried push harmless. Also the
+        // index every "reading before/after this time" lookup walks.
+        modelBuilder.Entity<MeterReading>()
+            .HasIndex(r => new { r.MeterId, r.ReadAt })
+            .IsUnique();
+
+        modelBuilder.Entity<MeterReading>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(r => r.CreatedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+    }
+
     // Accounts, roles, and the rights grid.
     private static void ConfigureAuth(ModelBuilder modelBuilder)
     {
@@ -419,6 +476,8 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             .Except([
                 Permissions.UsersManage, Permissions.RolesManage, Permissions.SettingsManage,
                 Permissions.TokensPersonal, Permissions.ApiDocs,
+                // History is the point of the app: removing it is an admin's call by default.
+                Permissions.EventsDelete,
             ]);
 
         string[] viewerGrants =
@@ -432,6 +491,7 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             Permissions.CategoriesRead,
             Permissions.LinksRead,
             Permissions.SettingsRead,
+            Permissions.MetersRead,
         ];
 
         string[] anonymousGrants =

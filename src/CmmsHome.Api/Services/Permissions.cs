@@ -22,10 +22,15 @@ public static class Permissions
     public const string EventsRead = "events.read";
     public const string EventsCreate = "events.create";
     public const string EventsEdit = "events.edit";
+    public const string EventsDelete = "events.delete";
 
     public const string RulesRead = "rules.read";
     public const string RulesWrite = "rules.write";
     public const string RulesDelete = "rules.delete";
+
+    public const string MetersRead = "meters.read";
+    public const string MetersRecord = "meters.record";
+    public const string MetersWrite = "meters.write";
 
     public const string StorageRead = "storage.read";
     public const string StorageWrite = "storage.write";
@@ -67,6 +72,7 @@ public static class Permissions
     public const string GroupEquipment = "Equipment";
     public const string GroupEvents = "Maintenance history";
     public const string GroupRules = "Schedules";
+    public const string GroupMeters = "Meters";
     public const string GroupStorage = "Storage";
     public const string GroupParts = "Parts";
     public const string GroupDocuments = "Documents";
@@ -95,6 +101,10 @@ public static class Permissions
             "Record a new event. This is the quick-log QR flow."),
         new(EventsEdit, GroupEvents, "Edit history",
             "Change or annotate events already logged."),
+        new(EventsDelete, GroupEvents, "Delete history entries",
+            "Remove a logged event, e.g. one logged by mistake. Parts it used go back into stock "
+            + "and its schedules revert to the previous entry.",
+            AllowedForAnonymous: false),
 
         new(RulesRead, GroupRules, "View schedules",
             "See maintenance schedules and what is due."),
@@ -102,6 +112,17 @@ public static class Permissions
             "Add schedules and change their intervals or due dates."),
         new(RulesDelete, GroupRules, "Delete",
             "Remove schedules."),
+
+        new(MetersRead, GroupMeters, "View meters",
+            "See running-hour, mileage and cycle counters and their reading history.",
+            AllowedForAnonymous: false),
+        new(MetersRecord, GroupMeters, "Record readings",
+            "Report a counter's current value. What an integration such as Home Assistant needs.",
+            AllowedForAnonymous: false),
+        new(MetersWrite, GroupMeters, "Manage meters",
+            "Add, rename and delete meters, mark a counter reset or a replaced device, "
+            + "and remove a mistaken reading.",
+            AllowedForAnonymous: false),
 
         new(StorageRead, GroupStorage, "View places",
             "Browse the storage tree and see what is stored where."),

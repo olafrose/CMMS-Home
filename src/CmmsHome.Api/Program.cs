@@ -45,6 +45,8 @@ builder.Services.AddScoped<ActorAccessor>();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<LabelSigner>();
 builder.Services.AddScoped<ApiTokenService>();
+builder.Services.AddScoped<MeterService>();
+builder.Services.AddHostedService<MeterRetentionHostedService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -134,6 +136,7 @@ app.MapRoleEndpoints();
 app.MapEquipmentEndpoints();
 app.MapEventEndpoints();
 app.MapRuleEndpoints();
+app.MapMeterEndpoints();
 app.MapStorageLocationEndpoints();
 app.MapCategoryEndpoints();
 app.MapPartEndpoints();

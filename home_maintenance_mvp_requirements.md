@@ -83,7 +83,9 @@ Wenn last_done_at + interval_days < heute => überfällig
   angebunden ist noch keiner
 - Home Assistant Integration
 - OBD2
-- Meter / Betriebsstunden
+- ~~Meter / Betriebsstunden~~ → umgesetzt: Zähler je Gerät (Stunden, km, Zyklen) und
+  nutzungsbasierte Wartungspläne, siehe `docs/meters.md`. Home Assistant bleibt extern und
+  liefert Zählerstände über die API.
 - KI
 - ~~Dokumentenmanagement~~ → in Planung aufgenommen, siehe Abschnitt 11
 

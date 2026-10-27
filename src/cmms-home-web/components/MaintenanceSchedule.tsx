@@ -4,7 +4,8 @@ import { useState, type Dispatch, type SetStateAction } from 'react'
 import { useAuth } from '@/components/AuthProvider'
 import { api } from '@/lib/api'
 import { targetFields } from '@/lib/maintenance'
-import type { IntervalUnit, MaintenanceRule, MaintenanceStatus, MaintenanceTarget, ScheduleType } from '@/lib/types'
+import { formatMeterValue, usageProgress } from '@/lib/meters'
+import type { IntervalUnit, MaintenanceRule, MaintenanceStatus, MaintenanceTarget, Meter, ScheduleType } from '@/lib/types'
 
 const INTERVAL_UNITS: IntervalUnit[] = ['Days', 'Weeks', 'Months', 'Years']
 const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700'
@@ -19,6 +20,17 @@ function spanLabel(value: number, unit: IntervalUnit): string {
   return `${value} ${value === 1 ? u.replace(/s$/, '') : u}`
 }
 function scheduleSummary(rule: MaintenanceRule): { primary: string; secondary: string } {
+  if (rule.scheduleType === 'Usage') {
+    const unit = rule.meter?.unit ?? ''
+    const ceiling = rule.intervalValue > 0 ? ` or ${spanLabel(rule.intervalValue, rule.intervalUnit)}` : ''
+    return {
+      primary: `Every ${formatMeterValue(rule.usageInterval, unit)}${ceiling}`,
+      secondary: [
+        rule.dueValue != null ? `Due at ${formatMeterValue(rule.dueValue, unit)}` : '',
+        usageProgress(rule),
+      ].filter(Boolean).join(' · '),
+    }
+  }
   if (rule.scheduleType === 'DueDate') {
     return {
       primary: rule.nextDueAt ? `Due ${formatDate(rule.nextDueAt)}` : 'No due date set',
@@ -41,13 +53,30 @@ interface RuleFormValues {
   scheduleType: ScheduleType; name?: string; intervalValue: number; intervalUnit: IntervalUnit
   lastDoneAt?: string; nextDueAt?: string; dueWindowValue: number; dueWindowUnit: IntervalUnit
   reminderLeadValue: number; reminderLeadUnit: IntervalUnit
+  meterId?: string; usageInterval?: number; lastDoneValue?: number; usageGrace?: number; usageReminderLead?: number
 }
 
-function RuleForm({ initial, submitting, submitLabel, onSubmit, onCancel }: {
-  initial?: MaintenanceRule; submitting: boolean; submitLabel: string
+const TYPE_LABEL: Record<ScheduleType, string> = { Interval: 'Repeating', DueDate: 'Due date', Usage: 'By usage' }
+
+function RuleForm({ initial, meters, submitting, submitLabel, onSubmit, onCancel }: {
+  initial?: MaintenanceRule; meters: Meter[]; submitting: boolean; submitLabel: string
   onSubmit: (v: RuleFormValues) => void; onCancel: () => void
 }) {
   const [scheduleType, setScheduleType] = useState<ScheduleType>(initial?.scheduleType ?? 'Interval')
+  // Usage: counted on one of this item's meters, with an optional calendar ceiling that
+  // reuses the interval fields.
+  const [meterId, setMeterId] = useState(initial?.meterId ?? meters[0]?.id ?? '')
+  const meter = meters.find(m => m.id === meterId)
+  const [usageInterval, setUsageInterval] = useState(initial?.usageInterval ? String(initial.usageInterval) : '')
+  // Pre-filled with the meter's current value: a schedule set up today usually starts
+  // counting from now, and an empty baseline would read "never done".
+  const [lastDoneValue, setLastDoneValue] = useState(
+    initial?.lastDoneValue != null ? String(initial.lastDoneValue)
+      : meter?.currentValue != null ? String(meter.currentValue) : '')
+  // Blank = the server's default of a tenth of the interval.
+  const [usageGrace, setUsageGrace] = useState(initial ? String(initial.usageGrace) : '')
+  const [usageLead, setUsageLead] = useState(initial ? String(initial.usageReminderLead) : '')
+  const [ceilingOn, setCeilingOn] = useState(initial?.scheduleType === 'Usage' && initial.intervalValue > 0)
   const [name, setName] = useState(initial?.name ?? '')
   const [intervalValue, setIntervalValue] = useState(initial?.intervalValue ? String(initial.intervalValue) : '')
   const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>(initial?.intervalUnit ?? 'Months')
@@ -58,30 +87,48 @@ function RuleForm({ initial, submitting, submitLabel, onSubmit, onCancel }: {
   const [reminderValue, setReminderValue] = useState(initial ? String(initial.reminderLeadValue) : '30')
   const [reminderUnit, setReminderUnit] = useState<IntervalUnit>(initial?.reminderLeadUnit ?? 'Days')
 
-  const valid = scheduleType === 'Interval' ? parseInt(intervalValue) >= 1 : !!nextDue
+  const valid = scheduleType === 'Interval' ? parseInt(intervalValue) >= 1
+    : scheduleType === 'Usage' ? !!meterId && Number(usageInterval) > 0 && (!ceilingOn || parseInt(intervalValue) >= 1)
+    : !!nextDue
+
+  const optionalNumber = (v: string) => v.trim() === '' || !Number.isFinite(Number(v)) ? undefined : Number(v)
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!valid) return
+    const usage = scheduleType === 'Usage'
     onSubmit({
       scheduleType, name: name.trim() || undefined,
-      intervalValue: parseInt(intervalValue) || 0, intervalUnit,
-      lastDoneAt: scheduleType === 'Interval' && lastDone ? new Date(lastDone).toISOString() : undefined,
+      // For Usage the interval fields are the optional ceiling; 0 = none.
+      intervalValue: usage && !ceilingOn ? 0 : parseInt(intervalValue) || 0, intervalUnit,
+      lastDoneAt: (scheduleType === 'Interval' || (usage && ceilingOn)) && lastDone ? new Date(lastDone).toISOString() : undefined,
       nextDueAt: scheduleType === 'DueDate' && nextDue ? new Date(nextDue).toISOString() : undefined,
       dueWindowValue: parseInt(windowValue) || 0, dueWindowUnit: windowUnit,
       reminderLeadValue: parseInt(reminderValue) || 0, reminderLeadUnit: reminderUnit,
+      ...(usage ? {
+        meterId,
+        usageInterval: Number(usageInterval),
+        lastDoneValue: optionalNumber(lastDoneValue),
+        usageGrace: optionalNumber(usageGrace),
+        usageReminderLead: optionalNumber(usageLead),
+      } : {}),
     })
   }
 
+  // Usage needs a meter on this item. Places have none, and an item without one gets the
+  // hint rather than a type it can't use.
+  const types: ScheduleType[] = meters.length > 0 || initial?.scheduleType === 'Usage'
+    ? ['Interval', 'DueDate', 'Usage'] : ['Interval', 'DueDate']
+
   return (
     <form onSubmit={submit} className={`${card} border-blue-200 dark:border-blue-800 px-4 py-4 space-y-3`}>
-      <div className="grid grid-cols-2 gap-2">
-        {(['Interval', 'DueDate'] as ScheduleType[]).map((t) => (
+      <div className={`grid gap-2 ${types.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        {types.map((t) => (
           <button key={t} type="button" onClick={() => setScheduleType(t)}
             className={`py-2 rounded-lg text-sm font-semibold border-2 transition-colors ${
               scheduleType === t ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
                 : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
-            {t === 'Interval' ? 'Repeating' : 'Due date'}
+            {TYPE_LABEL[t]}
           </button>
         ))}
       </div>
@@ -89,7 +136,58 @@ function RuleForm({ initial, submitting, submitLabel, onSubmit, onCancel }: {
         <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Name (optional)</label>
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Replace filter" className="field" />
       </div>
-      {scheduleType === 'Interval' ? (
+      {scheduleType === 'Usage' ? (
+        <>
+          {meters.length > 1 && (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Meter *</label>
+              <select value={meterId} onChange={(e) => setMeterId(e.target.value)} className="field">
+                {meters.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Every *</label>
+            <div className="flex gap-2 items-center">
+              <input type="number" min="0" step="any" value={usageInterval} onChange={(e) => setUsageInterval(e.target.value)} placeholder="e.g. 500" className="field w-28 flex-shrink-0" />
+              <span className="text-sm text-slate-500 dark:text-slate-400">{meter?.unit}</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Last done at ({meter?.unit})</label>
+            <input type="number" min="0" step="any" value={lastDoneValue} onChange={(e) => setLastDoneValue(e.target.value)}
+              placeholder={meter?.currentValue != null ? String(meter.currentValue) : 'Meter value at last service'} className="field" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Remind {meter?.unit} before</label>
+              <input type="number" min="0" step="any" value={usageLead} onChange={(e) => setUsageLead(e.target.value)} placeholder="10%" className="field" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Overdue {meter?.unit} after</label>
+              <input type="number" min="0" step="any" value={usageGrace} onChange={(e) => setUsageGrace(e.target.value)} placeholder="10%" className="field" />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input type="checkbox" checked={ceilingOn} onChange={(e) => setCeilingOn(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+            Also by time, whichever comes first
+          </label>
+          {ceilingOn && (
+            <>
+              <div className="flex gap-2">
+                <input type="number" min="1" value={intervalValue} onChange={(e) => setIntervalValue(e.target.value)} placeholder="e.g. 12" className="field w-24 flex-shrink-0" />
+                <select value={intervalUnit} onChange={(e) => setIntervalUnit(e.target.value as IntervalUnit)} className="field">
+                  {INTERVAL_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Last done on (optional)</label>
+                <input type="date" value={lastDone} onChange={(e) => setLastDone(e.target.value)} className="field" />
+              </div>
+            </>
+          )}
+        </>
+      ) : scheduleType === 'Interval' ? (
         <>
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Repeat every *</label>
@@ -122,15 +220,17 @@ function RuleForm({ initial, submitting, submitLabel, onSubmit, onCancel }: {
           </div>
         </>
       )}
-      <div>
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Remind me before due</label>
+      {(scheduleType !== 'Usage' || ceilingOn) && <div>
+        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+          {scheduleType === 'Usage' ? 'Remind me before the time limit' : 'Remind me before due'}
+        </label>
         <div className="flex gap-2">
           <input type="number" min="0" value={reminderValue} onChange={(e) => setReminderValue(e.target.value)} className="field w-24 flex-shrink-0" />
           <select value={reminderUnit} onChange={(e) => setReminderUnit(e.target.value as IntervalUnit)} className="field">
             {INTERVAL_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
         </div>
-      </div>
+      </div>}
       <div className="flex gap-2">
         <button type="submit" disabled={submitting || !valid} className="flex-1 bg-blue-600 text-white font-semibold py-2 rounded-lg disabled:opacity-50">
           {submitting ? 'Saving…' : submitLabel}
@@ -145,10 +245,12 @@ function RuleForm({ initial, submitting, submitLabel, onSubmit, onCancel }: {
  * The "Maintenance Schedule" section — list, add, edit, delete — for an item or a place.
  * The page owns `rules` (it loads them with the rest of its data); this owns the forms.
  */
-export default function MaintenanceSchedule({ target, rules, setRules }: {
+export default function MaintenanceSchedule({ target, rules, setRules, meters = [] }: {
   target: MaintenanceTarget
   rules: MaintenanceRule[]
   setRules: Dispatch<SetStateAction<MaintenanceRule[]>>
+  /** The item's meters, for usage schedules. Places have none. */
+  meters?: Meter[]
 }) {
   const { can } = useAuth()
   const [showAddForm, setShowAddForm] = useState(false)
@@ -181,7 +283,7 @@ export default function MaintenanceSchedule({ target, rules, setRules }: {
           <button onClick={() => { setShowAddForm(v => !v); setEditingRuleId(null) }} className="text-sm text-blue-500 font-medium">{showAddForm ? 'Cancel' : '+ Add'}</button>
         )}
       </div>
-      {showAddForm && <div className="mb-3"><RuleForm submitting={savingAdd} submitLabel="Save Schedule" onSubmit={handleAddRule} onCancel={() => setShowAddForm(false)} /></div>}
+      {showAddForm && <div className="mb-3"><RuleForm meters={meters} submitting={savingAdd} submitLabel="Save Schedule" onSubmit={handleAddRule} onCancel={() => setShowAddForm(false)} /></div>}
       {rules.length === 0 && !showAddForm && (
         <p className="text-sm text-slate-400 dark:text-slate-500">
           {canWriteRules ? 'No schedule yet. Tap + Add to create one.' : 'No schedule yet.'}
@@ -193,7 +295,7 @@ export default function MaintenanceSchedule({ target, rules, setRules }: {
           return (
             <li key={r.id}>
               {editingRuleId === r.id ? (
-                <RuleForm initial={r} submitting={savingEdit} submitLabel="Save" onSubmit={(v) => handleSaveEdit(r.id, v)} onCancel={() => setEditingRuleId(null)} />
+                <RuleForm initial={r} meters={meters} submitting={savingEdit} submitLabel="Save" onSubmit={(v) => handleSaveEdit(r.id, v)} onCancel={() => setEditingRuleId(null)} />
               ) : (
                 <div className={`flex items-center justify-between ${card} px-4 py-3`}>
                   <div>

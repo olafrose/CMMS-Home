@@ -286,7 +286,7 @@ not revoke sessions — deactivate the account for that.
 | Role | Grants |
 |---|---|
 | **Admin** (system) | Everything. Cannot lose `users.manage` / `roles.manage`. |
-| **Member** (default for new users) | Everything day-to-day, including deletes and sensitive documents; not `users.manage`, `roles.manage`, `settings.manage`, `tokens.personal` or `api.docs`. |
+| **Member** (default for new users) | Everything day-to-day, including deletes and sensitive documents; not `users.manage`, `roles.manage`, `settings.manage`, `tokens.personal`, `api.docs` or `events.delete`. |
 | **Viewer** | Read-only: view and browse equipment, history, schedules, storage, parts, documents, categories, links, settings. Not sensitive documents. |
 | **Anonymous** (system) | `equipment.read`, `events.read`, `events.create`, `rules.read` — exactly enough to scan a label, log maintenance and see the result. No browsing. |
 
@@ -318,9 +318,14 @@ handed the inventory.
 | Events | `GET /events`, `GET /events/{id}` | `events.read` — label-scopable |
 | | `POST /events` | `events.create` — label-scopable |
 | | `PUT /events/{id}` | `events.edit` |
+| | `DELETE /events/{id}` | `events.delete` (Admin only by default) |
 | Rules | `GET /rules` | `rules.read` — label-scopable |
 | | `POST`, `PUT /rules/{id}` | `rules.write` |
 | | `DELETE /rules/{id}` | `rules.delete` |
+| Meters | `GET /meters`, `/meters/{id}`, `/meters/{id}/readings` | `meters.read` |
+| | `POST /meters/{id}/readings`, `POST /meters/readings` (batch) | `meters.record` |
+| | `POST`/`PUT`/`DELETE /meters`, `/rebase`, `/replace`, `DELETE …/readings/{id}` | `meters.write` |
+| | `POST /meters/prune` (apply retention now) | `settings.manage` |
 | Storage | all `GET` (incl. `/{id}/contents`) | `storage.read` |
 | | `POST`, `PUT` (incl. move) | `storage.write` |
 | | `DELETE` | `storage.delete` |

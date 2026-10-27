@@ -87,6 +87,15 @@ namespace CmmsHome.Api.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("integer");
 
+                    b.Property<int>("MeterDailyDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MeterFullDetailDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MeterWeeklyDays")
+                        .HasColumnType("integer");
+
                     b.Property<int>("PathShorteningMode")
                         .HasColumnType("integer");
 
@@ -104,6 +113,9 @@ namespace CmmsHome.Api.Migrations
                         new
                         {
                             Id = 1,
+                            MeterDailyDays = 730,
+                            MeterFullDetailDays = 90,
+                            MeterWeeklyDays = 1825,
                             PathShorteningMode = 1,
                             PathShorteningSegments = 2,
                             StorageMaxDepth = 6
@@ -465,6 +477,12 @@ namespace CmmsHome.Api.Migrations
                     b.Property<DateTime?>("LastDoneAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal?>("LastDoneValue")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid?>("MeterId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Name")
                         .HasColumnType("text");
 
@@ -489,16 +507,110 @@ namespace CmmsHome.Api.Migrations
                     b.Property<Guid?>("StorageLocationId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("UsageGrace")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("UsageInterval")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("UsageReminderLead")
+                        .HasColumnType("numeric");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EquipmentId");
+
+                    b.HasIndex("MeterId");
 
                     b.HasIndex("StorageLocationId");
 
                     b.ToTable("Rules", t =>
                         {
                             t.HasCheckConstraint("CK_Rules_OneTarget", "num_nonnulls(\"EquipmentId\", \"StorageLocationId\") = 1");
+
+                            t.HasCheckConstraint("CK_Rules_UsageMeter", "(\"ScheduleType\" = 2) = (\"MeterId\" IS NOT NULL)");
                         });
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.Meter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("BaselineAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTime?>("CurrentReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("CurrentValue")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("EquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Offset")
+                        .HasColumnType("numeric");
+
+                    b.Property<double?>("RatePerDay")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId");
+
+                    b.ToTable("Meters");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.MeterReading", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MeterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("RawValue")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Source")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Value")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("MeterId", "ReadAt")
+                        .IsUnique();
+
+                    b.ToTable("MeterReadings");
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.Part", b =>
@@ -759,6 +871,11 @@ namespace CmmsHome.Api.Migrations
                         new
                         {
                             RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
+                            Permission = "events.delete"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
                             Permission = "events.edit"
                         },
                         new
@@ -775,6 +892,21 @@ namespace CmmsHome.Api.Migrations
                         {
                             RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
                             Permission = "links.write"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
+                            Permission = "meters.read"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
+                            Permission = "meters.record"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000001"),
+                            Permission = "meters.write"
                         },
                         new
                         {
@@ -959,6 +1091,21 @@ namespace CmmsHome.Api.Migrations
                         new
                         {
                             RoleId = new Guid("a0000000-0000-0000-0000-000000000002"),
+                            Permission = "meters.read"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000002"),
+                            Permission = "meters.record"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000002"),
+                            Permission = "meters.write"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000002"),
                             Permission = "parts.consume"
                         },
                         new
@@ -1055,6 +1202,11 @@ namespace CmmsHome.Api.Migrations
                         {
                             RoleId = new Guid("a0000000-0000-0000-0000-000000000003"),
                             Permission = "links.read"
+                        },
+                        new
+                        {
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000003"),
+                            Permission = "meters.read"
                         },
                         new
                         {
@@ -1426,6 +1578,11 @@ namespace CmmsHome.Api.Migrations
                         .HasForeignKey("EquipmentId")
                         .OnDelete(DeleteBehavior.Cascade);
 
+                    b.HasOne("CmmsHome.Api.Models.Meter", "Meter")
+                        .WithMany()
+                        .HasForeignKey("MeterId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("CmmsHome.Api.Models.StorageLocation", "StorageLocation")
                         .WithMany("Rules")
                         .HasForeignKey("StorageLocationId")
@@ -1433,7 +1590,32 @@ namespace CmmsHome.Api.Migrations
 
                     b.Navigation("Equipment");
 
+                    b.Navigation("Meter");
+
                     b.Navigation("StorageLocation");
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.Meter", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.Equipment", null)
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CmmsHome.Api.Models.MeterReading", b =>
+                {
+                    b.HasOne("CmmsHome.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CmmsHome.Api.Models.Meter", null)
+                        .WithMany()
+                        .HasForeignKey("MeterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CmmsHome.Api.Models.Part", b =>

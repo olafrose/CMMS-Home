@@ -5,6 +5,7 @@ import type {
   AppSettings, SaveAppSettingsResult, ExternalLink,
   Me, User, SaveUserDto, AccessGrid, AuthSession, MaintenanceTarget,
   ApiToken, MintApiTokenDto, CreatedApiToken, PermissionInfo,
+  Meter, MeterReading, RecordOutcome, PruneResult,
 } from './types'
 import { targetFields, targetQuery } from './maintenance'
 
@@ -105,6 +106,32 @@ export const api = {
       request<MaintenanceEvent>('/events', { method: 'POST', body: JSON.stringify(dto) }),
     update: (id: string, dto: UpdateEventDto) =>
       request<MaintenanceEvent>(`/events/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
+    /** Undoes the log: parts back to stock, schedules revert, documents unlinked. */
+    delete: (id: string) => request<void>(`/events/${id}`, { method: 'DELETE' }),
+  },
+  meters: {
+    list: (equipmentId: string) => request<Meter[]>(`/meters?equipment_id=${equipmentId}`),
+    create: (dto: { equipmentId: string; name: string; unit: string }) =>
+      request<Meter>('/meters', { method: 'POST', body: JSON.stringify(dto) }),
+    update: (id: string, dto: { name: string; unit: string }) =>
+      request<Meter>(`/meters/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
+    delete: (id: string) => request<void>(`/meters/${id}`, { method: 'DELETE' }),
+    readings: (id: string, limit = 20) =>
+      request<MeterReading[]>(`/meters/${id}/readings?limit=${limit}`),
+    /** `value` is the raw device counter; the server adds the meter's offset. */
+    record: (id: string, value: number, readAt?: string) =>
+      request<{ reading: MeterReading; meter: Meter; outcome: RecordOutcome }>(
+        `/meters/${id}/readings`, { method: 'POST', body: JSON.stringify({ value, readAt, source: 'manual' }) }),
+    deleteReading: (id: string, readingId: string) =>
+      request<void>(`/meters/${id}/readings/${readingId}`, { method: 'DELETE' }),
+    /** The counter was reset on the same device: the total carries on. */
+    rebase: (id: string, newRawValue: number) =>
+      request<{ meter: Meter }>(`/meters/${id}/rebase`, { method: 'POST', body: JSON.stringify({ newRawValue }) }),
+    /** Applies the retention windows now instead of at the next daily run. */
+    prune: () => request<PruneResult>('/meters/prune', { method: 'POST' }),
+    /** The device was replaced: the meter, and schedules on it, start over. */
+    replace: (id: string, newRawValue = 0, replacedAt?: string) =>
+      request<{ meter: Meter }>(`/meters/${id}/replace`, { method: 'POST', body: JSON.stringify({ newRawValue, replacedAt }) }),
   },
   rules: {
     list: (target?: MaintenanceTarget) =>

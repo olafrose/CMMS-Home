@@ -1,6 +1,42 @@
 export type MaintenanceStatus = 'Ok' | 'Upcoming' | 'Due' | 'Overdue'
 export type IntervalUnit = 'Days' | 'Weeks' | 'Months' | 'Years'
-export type ScheduleType = 'Interval' | 'DueDate'
+export type ScheduleType = 'Interval' | 'DueDate' | 'Usage'
+/** Which limit drives a Usage rule: the counter, or its optional calendar ceiling. */
+export type UsageDueReason = 'Usage' | 'Time'
+
+/**
+ * A cumulative counter on one item — running hours, km, cycles. Fed with the device's running
+ * total; `currentValue`/`ratePerDay` are maintained server-side from the readings.
+ */
+export interface Meter {
+  id: string
+  equipmentId: string
+  name: string
+  /** A label only ("h", "km", "cycles"); never converted. */
+  unit: string
+  offset: number
+  baselineAt: string
+  currentValue: number | null
+  currentReadAt: string | null
+  /** Recent average use per day, for forecasts. Null with too little history. */
+  ratePerDay: number | null
+  createdAt: string
+}
+
+export interface MeterReading {
+  id: string
+  meterId: string
+  rawValue: number
+  /** The meter total at this reading (raw + the offset then in force). */
+  value: number
+  readAt: string
+  recordedAt: string
+  source: string | null
+  createdByUserId: string | null
+}
+
+export type RecordOutcome = 'Created' | 'Duplicate' | 'Unchanged'
+
 // Lens for the two list views (serialized PascalCase by the API's enum converter).
 export type EquipmentKind = 'Asset' | 'Tool' | 'Both'
 
@@ -118,6 +154,20 @@ export interface MaintenanceRule extends TargetFields {
    *  MaintenanceRule.cs, and a second copy here can disagree with `status`. */
   dueAt: string | null
   overdueAt: string | null
+  // --- Usage rules (null/0 otherwise) ---
+  meterId: string | null
+  /** Loaded with the rule: its status is computed from the meter's current value. */
+  meter: Meter | null
+  usageInterval: number
+  lastDoneValue: number | null
+  usageGrace: number
+  usageReminderLead: number
+  /** Server-computed, like dueAt. */
+  dueValue: number | null
+  overdueValue: number | null
+  /** Use left before due; negative once past it. */
+  remainingValue: number | null
+  dueReason: UsageDueReason | null
 }
 
 // A warranty is a fact with a deadline, not an obligation — hence its own vocabulary
@@ -144,6 +194,8 @@ export interface CreateEventDto {
   note?: string
   photoUrl?: string
   occurredAt?: string
+  /** Meter totals at the time of the work; recorded as readings and used as the new baseline. */
+  meterReadings?: { meterId: string; value: number }[]
 }
 
 export interface UpdateEventDto {
@@ -165,6 +217,11 @@ export interface CreateRuleDto {
   dueWindowUnit: IntervalUnit
   reminderLeadValue: number
   reminderLeadUnit: IntervalUnit
+  meterId?: string
+  usageInterval?: number
+  lastDoneValue?: number
+  usageGrace?: number
+  usageReminderLead?: number
 }
 
 export interface UpdateRuleDto {
@@ -178,6 +235,11 @@ export interface UpdateRuleDto {
   dueWindowUnit?: IntervalUnit
   reminderLeadValue?: number
   reminderLeadUnit?: IntervalUnit
+  meterId?: string
+  usageInterval?: number
+  lastDoneValue?: number
+  usageGrace?: number
+  usageReminderLead?: number
 }
 
 export type DocumentStatus = 'Unclassified' | 'Classified' | 'Ignored' | 'Missing' | 'PendingMove'
@@ -242,6 +304,20 @@ export interface AppSettings {
   storageMaxDepth: number
   pathShorteningMode: PathShorteningMode
   pathShorteningSegments: number
+  /** Meter reading retention: every reading kept this long, then thinned (see docs/meters.md). */
+  meterFullDetailDays: number
+  /** ...then one per day up to this age, */
+  meterDailyDays: number
+  /** ...then one per week up to this age, then one per month forever. */
+  meterWeeklyDays: number
+}
+
+/** What a retention run deleted, per tier. */
+export interface PruneResult {
+  daily: number
+  weekly: number
+  monthly: number
+  total: number
 }
 
 export interface SaveAppSettingsResult {

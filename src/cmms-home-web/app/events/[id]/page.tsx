@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import { useAuth } from '@/components/AuthProvider'
@@ -17,6 +17,7 @@ function formatDate(iso: string) {
 export default function EventDetailPage() {
   const { id: eventId } = useParams<{ id: string }>()
   const { can } = useAuth()
+  const router = useRouter()
   const searchParams = useSearchParams()
   // Back to wherever the event was opened from: an item's page or a place's.
   const equipmentId = searchParams.get('equipment_id')
@@ -36,6 +37,9 @@ export default function EventDetailPage() {
   const [editNote, setEditNote] = useState('')
   const [editDate, setEditDate] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
+
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   // Add part usage
   const [partId, setPartId] = useState('')
@@ -111,6 +115,26 @@ export default function EventDetailPage() {
   const selectedPart = parts.find(p => p.id === partId)
   // Changing what an event consumed moves stock, so it needs more than read access.
   const canConsume = can('parts.consume')
+
+  // Says what deleting undoes, because three things beyond the row change and none of them
+  // is obvious from "delete": stock, schedules, and document links.
+  async function handleDelete() {
+    const consequences = [
+      usages.length ? 'Parts it used go back into stock.' : '',
+      'Schedules it restarted revert to the previous entry.',
+      'Linked documents are kept, but unlinked.',
+    ].filter(Boolean)
+    if (!confirm(`Delete this entry? This can't be undone.\n\n${consequences.join('\n')}`)) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await api.events.delete(eventId)
+      router.push(backHref)
+    } catch {
+      setDeleteError('Could not delete this entry.')
+      setDeleting(false)
+    }
+  }
 
   if (loading) return <div className="p-6 text-slate-500 dark:text-slate-400 text-sm">Loading…</div>
   if (!event) return <div className="p-6 text-red-500 text-sm">Event not found</div>
@@ -243,6 +267,16 @@ export default function EventDetailPage() {
       </section>
 
       {/* Documents section will mount here in document-management Phase 2 (GET /documents?event_id=). */}
+
+      {can('events.delete') && (
+        <div className="space-y-1">
+          <button onClick={handleDelete} disabled={deleting}
+            className="w-full text-sm font-semibold text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 py-2.5 rounded-xl disabled:opacity-50">
+            {deleting ? 'Deleting…' : 'Delete Entry'}
+          </button>
+          {deleteError && <p className="text-xs text-red-500">{deleteError}</p>}
+        </div>
+      )}
 
       <Link href={backHref}
         className="block w-full text-center bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-3 rounded-xl">

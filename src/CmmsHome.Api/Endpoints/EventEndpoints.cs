@@ -64,7 +64,7 @@ public static class EventEndpoints
             return Results.Ok(evt);
         }).RequirePermission(Permissions.EventsEdit);
 
-        group.MapPost("/", async (CreateEventDto dto, CmmsDbContext db, ActorAccessor accessor) =>
+        group.MapPost("/", async (CreateEventDto dto, CmmsDbContext db, ActorAccessor accessor, MeterService meters) =>
         {
             if (!ValidTypes.Contains(dto.Type))
                 return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -80,6 +80,34 @@ public static class EventEndpoints
 
             // Default to now, but allow back-dating a forgotten task to when it was done.
             var occurredAt = DateTime.SpecifyKind(dto.OccurredAt ?? DateTime.UtcNow, DateTimeKind.Utc);
+
+            // The event, any meter readings typed into the log form, and the schedules they
+            // restart all land together or not at all: a refused reading must not leave an
+            // event behind that restarted its schedules from the wrong count.
+            await using var tx = await db.Database.BeginTransactionAsync();
+            var meterTime = MeterService.MeterTimeFor(occurredAt);
+
+            // Readings taken at the time of the work, from the log form's optional "meter
+            // readings" field. Only recorded for a caller who may record readings, and only
+            // for this item's meters; otherwise quietly skipped, so a label scan still logs
+            // in one tap rather than failing on a field it was never offered.
+            if (dto.MeterReadings is { Count: > 0 } typed && dto.EquipmentId is Guid eqId
+                && actor.Can(Permissions.MetersRecord))
+            {
+                var ids = typed.Select(r => r.MeterId).ToList();
+                var owned = await db.Meters.Where(m => m.EquipmentId == eqId && ids.Contains(m.Id)).ToListAsync();
+                foreach (var meter in owned)
+                {
+                    var value = typed.First(r => r.MeterId == meter.Id).Value;
+                    var result = await meters.RecordAsync(meter, value - meter.Offset, meterTime,
+                        MeterService.SourceEvent, actor.User?.Id);
+                    if (!result.Succeeded)
+                        return Results.ValidationProblem(
+                            new Dictionary<string, string[]> { [$"meterReadings.{meter.Id}"] = [result.Error!] },
+                            statusCode: result.Status);
+                }
+            }
+
             var evt = new MaintenanceEvent
             {
                 Id = Guid.NewGuid(),
@@ -105,11 +133,64 @@ public static class EventEndpoints
                     r => r.LastDoneAt,
                     r => r.LastDoneAt == null || occurredAt > r.LastDoneAt ? occurredAt : r.LastDoneAt));
 
+            // Usage rules restart from the meter's count at the time of the work.
+            if (dto.EquipmentId is Guid equipmentId)
+                await meters.AdvanceUsageRulesAsync(equipmentId, occurredAt, meterTime);
+
             await db.SaveChangesAsync();
+            await tx.CommitAsync();
             return Results.Created($"/events/{evt.Id}", evt);
         }).RequirePermission(Permissions.EventsCreate).AllowLabelScope();
+
+        group.MapEventDelete();
     }
 }
 
-record CreateEventDto(Guid? EquipmentId, Guid? StorageLocationId, string Type, string? Note, string? PhotoUrl, DateTime? OccurredAt);
+static class EventDeletion
+{
+    // Removing a logged event undoes what logging it did, and nothing more. In one
+    // transaction: parts it consumed go back into stock (as DELETE /part-usages does), and
+    // schedules whose baseline came from it revert to the previous remaining entry on the
+    // same target. Document links to it cascade away; the documents survive, unlinked.
+    // Meter readings recorded alongside it are kept: they are facts about the counter, not
+    // about the service.
+    public static void MapEventDelete(this RouteGroupBuilder group) =>
+        group.MapDelete("/{id:guid}", async (Guid id, CmmsDbContext db, MeterService meters) =>
+        {
+            var evt = await db.Events.FindAsync(id);
+            if (evt is null) return Results.NotFound();
+
+            await using var tx = await db.Database.BeginTransactionAsync();
+
+            var usages = await db.PartUsages.Include(u => u.Part).Where(u => u.MaintenanceEventId == id).ToListAsync();
+            foreach (var usage in usages) usage.Part.Quantity += usage.QuantityUsed;
+
+            // The latest entry that will remain on this target — what schedules fall back to.
+            var previousAt = await db.Events
+                .Where(e => e.Id != id && e.EquipmentId == evt.EquipmentId && e.StorageLocationId == evt.StorageLocationId)
+                .MaxAsync(e => (DateTime?)e.CreatedAt);
+
+            // Interval rules whose countdown this event set. A rule whose LastDoneAt differs
+            // was set by hand or by a later event, and is left alone.
+            var intervalRules = await db.Rules
+                .Where(r => r.EquipmentId == evt.EquipmentId && r.StorageLocationId == evt.StorageLocationId
+                            && r.ScheduleType == ScheduleType.Interval && r.LastDoneAt == evt.CreatedAt)
+                .ToListAsync();
+            foreach (var rule in intervalRules) rule.LastDoneAt = previousAt;
+
+            if (evt.EquipmentId is Guid equipmentId)
+                await meters.RollBackUsageRulesAsync(equipmentId, evt.CreatedAt, previousAt);
+
+            db.Events.Remove(evt);
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+            return Results.NoContent();
+        }).RequirePermission(Permissions.EventsDelete);
+}
+
+record CreateEventDto(
+    Guid? EquipmentId, Guid? StorageLocationId, string Type, string? Note, string? PhotoUrl, DateTime? OccurredAt,
+    // Meter *totals* as shown on the log form (the value the user sees), not raw device values.
+    List<EventMeterReadingDto>? MeterReadings = null);
+record EventMeterReadingDto(Guid MeterId, decimal Value);
 record UpdateEventDto(string Type, string? Note, DateTime? OccurredAt);

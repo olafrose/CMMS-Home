@@ -35,9 +35,26 @@ public static class AppSettingsEndpoints
                 db.AppSettings.Add(settings);
             }
 
+            // Retention windows are optional in the payload (null = keep), so a client that
+            // predates them can still save the rest. Validated as the resulting triple.
+            var full = dto.MeterFullDetailDays ?? settings.MeterFullDetailDays;
+            var daily = dto.MeterDailyDays ?? settings.MeterDailyDays;
+            var weekly = dto.MeterWeeklyDays ?? settings.MeterWeeklyDays;
+            var retention = new Dictionary<string, string[]>();
+            if (full < AppSettings.MinMeterFullDetailDays)
+                retention["meterFullDetailDays"] =
+                    [$"At least {AppSettings.MinMeterFullDetailDays} days, so usage forecasts keep a full month of detail"];
+            if (daily <= full) retention["meterDailyDays"] = ["Must be longer than the full-detail period"];
+            if (weekly <= daily) retention["meterWeeklyDays"] = ["Must be longer than the daily period"];
+            if (weekly > 36500) retention["meterWeeklyDays"] = ["At most 36500 days"];
+            if (retention.Count > 0) return Results.ValidationProblem(retention);
+
             settings.StorageMaxDepth = dto.StorageMaxDepth;
             settings.PathShorteningMode = dto.PathShorteningMode;
             settings.PathShorteningSegments = dto.PathShorteningSegments;
+            settings.MeterFullDetailDays = full;
+            settings.MeterDailyDays = daily;
+            settings.MeterWeeklyDays = weekly;
             await db.SaveChangesAsync();
 
             // Lowering the cap is allowed and grandfathers existing trees — depth is a
@@ -52,4 +69,6 @@ public static class AppSettingsEndpoints
     }
 }
 
-record SaveAppSettingsDto(int StorageMaxDepth, PathShorteningMode PathShorteningMode, int PathShorteningSegments);
+record SaveAppSettingsDto(
+    int StorageMaxDepth, PathShorteningMode PathShorteningMode, int PathShorteningSegments,
+    int? MeterFullDetailDays = null, int? MeterDailyDays = null, int? MeterWeeklyDays = null);

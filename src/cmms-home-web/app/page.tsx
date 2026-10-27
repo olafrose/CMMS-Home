@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import { DEFAULT_LOCATION_ICON, formatLocationPath } from '@/lib/storage'
 import { eventHref, targetHref, targetLogHref, targetOf } from '@/lib/maintenance'
+import { usageProgress } from '@/lib/meters'
 import type { AppSettings, Equipment, MaintenanceEvent, MaintenanceRule, Part, StorageLocation } from '@/lib/types'
 
 // Whole days from now until an instant (negative = past). Pure date formatting — the
@@ -21,6 +22,9 @@ function urgency(rule: MaintenanceRule): number {
 }
 
 function dueLabel(rule: MaintenanceRule): string {
+  // Counted in hours/km/cycles unless the calendar ceiling is what makes it due, in which
+  // case the day-based wording below says it better.
+  if (rule.scheduleType === 'Usage' && rule.dueReason !== 'Time') return usageProgress(rule)
   if (!rule.dueAt) return rule.scheduleType === 'DueDate' ? 'No due date set' : 'Never done — do it now'
   // Overdue is counted from the point the backend flags it, i.e. past the due day and
   // any grace window.

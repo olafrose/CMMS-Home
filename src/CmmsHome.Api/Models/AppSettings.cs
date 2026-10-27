@@ -25,6 +25,20 @@ public class AppSettings
     // lineage regardless of this.
     public PathShorteningMode PathShorteningMode { get; set; } = PathShorteningMode.LastNSegments;
     public int PathShorteningSegments { get; set; } = 2;
+
+    // Meter reading retention (Services/MeterRetention.cs). Readings younger than
+    // MeterFullDetailDays are all kept; older ones are thinned to the last per day, then
+    // (past MeterDailyDays) per week, then (past MeterWeeklyDays) per month, kept forever.
+    // CMMS@home keeps what maintenance needs — end-of-period totals, an approximate value
+    // at any past time — not run-by-run detail, which stays in the system that reports it
+    // (Home Assistant's long-term statistics, typically).
+    //
+    // MeterFullDetailDays never goes below MinMeterFullDetailDays, so the usage rate's
+    // 30-day window (MeterService.RateWindow) always works on unthinned data.
+    public const int MinMeterFullDetailDays = 31;
+    public int MeterFullDetailDays { get; set; } = 90;
+    public int MeterDailyDays { get; set; } = 730;
+    public int MeterWeeklyDays { get; set; } = 1825;
 }
 
 public enum PathShorteningMode { Full, LastNSegments }

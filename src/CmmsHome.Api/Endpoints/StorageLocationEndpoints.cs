@@ -126,13 +126,16 @@ public static class StorageLocationEndpoints
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["children"] = ["Empty or move the places inside first"] });
 
             // A place's own maintenance history is not collateral of tidying the storage tree
-            // (the FK is Restrict for the same reason). Say what is in the way.
-            // Events can't be deleted at all, so a place with history is kept for good; a
-            // schedule is only in the way until someone deletes it.
+            // (the FK is Restrict for the same reason). Say what is in the way. Deleting the
+            // history is possible, but a deliberate act of its own (events.delete), never a
+            // side effect of removing the place.
             var events = await db.Events.CountAsync(e => e.StorageLocationId == id);
             if (events > 0)
                 return Results.ValidationProblem(new Dictionary<string, string[]>
-                    { ["maintenance"] = [$"This place has {Plural(events, "logged maintenance event")}, so it's kept to preserve that history"] });
+                {
+                    ["maintenance"] = [$"This place has {Plural(events, "logged maintenance event")}, so it's kept to "
+                        + "preserve that history. Someone allowed to delete history entries can remove them first."],
+                });
             var rules = await db.Rules.CountAsync(r => r.StorageLocationId == id);
             if (rules > 0)
                 return Results.ValidationProblem(new Dictionary<string, string[]>

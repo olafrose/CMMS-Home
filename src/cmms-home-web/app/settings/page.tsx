@@ -13,6 +13,8 @@ const card = 'bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slat
 // Must match AppSettings.AbsoluteStorageMaxDepth on the API, which is itself pinned to
 // locationPath()'s iteration guard in lib/storage.ts.
 const ABSOLUTE_MAX_DEPTH = 16
+// Mirrors AppSettings.MinMeterFullDetailDays: the usage forecast needs a full month unthinned.
+const MIN_FULL_DETAIL_DAYS = 31
 
 function SettingRow({ href, icon, title, sub }: { href: string; icon: string; title: string; sub: string }) {
   return (
@@ -64,6 +66,8 @@ export default function SettingsPage() {
   const [rotating, setRotating] = useState(false)
   const [rotateMessage, setRotateMessage] = useState('')
   const [rotateError, setRotateError] = useState('')
+  const [pruning, setPruning] = useState(false)
+  const [pruneMessage, setPruneMessage] = useState('')
 
   useEffect(() => {
     Promise.all([api.appSettings.get(), api.storageLocations.list()])
@@ -107,10 +111,27 @@ export default function SettingsPage() {
       setDraft(result.settings)
       setOverCap(result.placesOverNewDepthCap)
       setSaved(true)
-    } catch {
-      setError('Could not save. Check the values and try again.')
+    } catch (e) {
+      // The server's own wording, e.g. "Must be longer than the full-detail period".
+      setError(errorMessage(e, 'Could not save. Check the values and try again.'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Runs the thinning with the *saved* windows, now rather than at the next daily run.
+  async function thinNow() {
+    setPruning(true)
+    setPruneMessage('')
+    try {
+      const r = await api.meters.prune()
+      setPruneMessage(r.total === 0
+        ? 'Nothing to thin.'
+        : `Thinned ${r.total} reading${r.total === 1 ? '' : 's'} (${r.daily} to daily, ${r.weekly} to weekly, ${r.monthly} to monthly).`)
+    } catch (e) {
+      setPruneMessage(errorMessage(e, 'Could not thin the readings.'))
+    } finally {
+      setPruning(false)
     }
   }
 
@@ -140,6 +161,10 @@ export default function SettingsPage() {
 
   const depthValid = draft.storageMaxDepth >= 1 && draft.storageMaxDepth <= ABSOLUTE_MAX_DEPTH
   const segmentsValid = draft.pathShorteningSegments >= 1
+  // Mirrors the server's check so Save isn't offered for what it will refuse.
+  const retentionValid = draft.meterFullDetailDays >= MIN_FULL_DETAIL_DAYS
+    && draft.meterDailyDays > draft.meterFullDetailDays
+    && draft.meterWeeklyDays > draft.meterDailyDays
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-8">
@@ -168,6 +193,48 @@ export default function SettingsPage() {
           <p className="text-xs text-slate-400 dark:text-slate-500">
             Lowering this keeps existing places as they are — it only limits new ones and moves.
           </p>
+        </div>
+      </section>
+
+      {/* Meter history */}
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Meter history</h2>
+        <div className={`${card} px-4 py-3 space-y-2`}>
+          {([
+            ['meterFullDetailDays', 'Keep every reading for'],
+            ['meterDailyDays', 'then one per day, up to'],
+            ['meterWeeklyDays', 'then one per week, up to'],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-3">
+              <span className="flex-1 text-sm text-slate-700 dark:text-slate-200">{label}</span>
+              <input
+                type="number" min={1} value={draft[key]}
+                onChange={e => patch({ [key]: e.target.value === '' ? 0 : parseInt(e.target.value, 10) })}
+                disabled={!canManage}
+                className="field w-24 text-sm py-1.5 text-center disabled:opacity-60"
+              />
+              <span className="text-xs text-slate-400 dark:text-slate-500 w-8">days</span>
+            </label>
+          ))}
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            …and one per month after that, kept for good. Older readings are thinned so counters don&apos;t
+            fill the database; schedules are unaffected. Detailed run history stays in the system that
+            reports it, e.g. Home Assistant.
+          </p>
+          {!retentionValid && (
+            <p className="text-xs text-red-500">
+              Full detail must be at least {MIN_FULL_DETAIL_DAYS} days, and each period longer than the one before.
+            </p>
+          )}
+          {canManage && (
+            <>
+              <button onClick={thinNow} disabled={pruning}
+                className="text-xs font-medium text-slate-500 dark:text-slate-400 underline disabled:opacity-40">
+                {pruning ? 'Thinning…' : 'Thin now with the saved settings'}
+              </button>
+              {pruneMessage && <p className="text-xs text-slate-500 dark:text-slate-400">{pruneMessage}</p>}
+            </>
+          )}
         </div>
       </section>
 
@@ -233,7 +300,7 @@ export default function SettingsPage() {
           <>
             <button
               onClick={save}
-              disabled={saving || !depthValid || !segmentsValid}
+              disabled={saving || !depthValid || !segmentsValid || !retentionValid}
               className="w-full bg-blue-600 text-white font-semibold py-2 rounded-xl disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save Changes'}

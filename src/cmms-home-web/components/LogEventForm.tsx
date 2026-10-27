@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api, ApiError } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 import { EVENT_TYPES, eventHref, targetFields, targetHref } from '@/lib/maintenance'
-import type { MaintenanceRule, MaintenanceTarget } from '@/lib/types'
+import type { MaintenanceRule, MaintenanceTarget, Meter } from '@/lib/types'
 
 
 /**
@@ -24,6 +25,27 @@ export default function LogEventForm({ target }: { target: MaintenanceTarget }) 
   // Due-date schedules on this target, with an editable next-due date each
   const [dueRules, setDueRules] = useState<MaintenanceRule[]>([])
   const [dueDates, setDueDates] = useState<Record<string, string>>({})
+
+  // The item's meters, for the optional "meter readings" disclosure. Collapsed and
+  // pre-filled, so the one-tap path is untouched: an unchanged value is never sent, and the
+  // server then takes its latest reading as the new baseline for usage schedules.
+  const { can } = useAuth()
+  const canRecordMeters = kind === 'equipment' && can('meters.read') && can('meters.record')
+  const canReplaceMeters = kind === 'equipment' && can('meters.write')
+  const [meters, setMeters] = useState<Meter[]>([])
+  const [readings, setReadings] = useState<Record<string, string>>({})
+  const [showReadings, setShowReadings] = useState(false)
+  const [replaced, setReplaced] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    if (!canRecordMeters && !canReplaceMeters) return
+    api.meters.list(id)
+      .then((ms) => {
+        setMeters(ms)
+        setReadings(Object.fromEntries(ms.map((m) => [m.id, m.currentValue != null ? String(m.currentValue) : ''])))
+      })
+      .catch(() => {})
+  }, [id, canRecordMeters, canReplaceMeters])
 
   // The in-flight label-token exchange, or null when we arrived without a token.
   const labelSession = useRef<Promise<void> | null>(null)
@@ -62,12 +84,33 @@ export default function LogEventForm({ target }: { target: MaintenanceTarget }) 
       // something on the rare tap that beats the network.
       if (labelSession.current) await labelSession.current
 
+      // Only the values the user actually changed: an untouched field is the current value,
+      // which the server would take as the baseline anyway.
+      const meterReadings = canRecordMeters
+        ? meters
+          .filter((m) => readings[m.id] !== '' && Number(readings[m.id]) !== m.currentValue && Number.isFinite(Number(readings[m.id])))
+          .map((m) => ({ meterId: m.id, value: Number(readings[m.id]) }))
+        : []
+
       const event = await api.events.create({
         ...targetFields({ kind, id }),
         type,
         note: note.trim() || undefined,
         occurredAt: new Date(date).toISOString(),
+        ...(meterReadings.length ? { meterReadings } : {}),
       })
+
+      // A replacement that swapped the whole device restarts its meters (and the usage
+      // schedules on them) at 0. After the event, so a refusal can't lose the log; reported
+      // rather than swallowed, because a meter left on the old device's count is wrong.
+      const toReplace = type === 'replacement' && canReplaceMeters ? meters.filter((m) => replaced[m.id]) : []
+      if (toReplace.length) {
+        const isToday = date === new Date().toISOString().slice(0, 10)
+        const replacedAt = isToday ? undefined : new Date(new Date(date).getTime() + 86_400_000 - 1).toISOString()
+        const failed: string[] = []
+        for (const m of toReplace) await api.meters.replace(m.id, 0, replacedAt).catch(() => failed.push(m.name))
+        if (failed.length) alert(`Logged, but could not restart: ${failed.join(', ')}. Mark the device replaced on the item's page.`)
+      }
 
       // Push any new next-due dates for the target's due-date schedules. Deliberately
       // non-fatal: the event is already stored by now, and someone logging from a scanned
@@ -86,9 +129,13 @@ export default function LogEventForm({ target }: { target: MaintenanceTarget }) 
     } catch (e) {
       // The save itself failed. Say why when the server told us, so a refusal doesn't read
       // as the button simply not working.
-      setError(e instanceof ApiError && e.isDenied
-        ? `Not allowed to log maintenance on this ${kind === 'place' ? 'place' : 'item'}. Scan its label again, or sign in.`
-        : 'Could not save. Try again.')
+      const meterError = e instanceof ApiError
+        ? Object.entries(e.errors ?? {}).find(([k]) => k.startsWith('meterReadings.'))?.[1]?.join(' ')
+        : undefined
+      setError(meterError ? `Meter reading refused: ${meterError}`
+        : e instanceof ApiError && e.isDenied
+          ? `Not allowed to log maintenance on this ${kind === 'place' ? 'place' : 'item'}. Scan its label again, or sign in.`
+          : 'Could not save. Try again.')
       setSaving(false)
     }
   }
@@ -147,6 +194,38 @@ export default function LogEventForm({ target }: { target: MaintenanceTarget }) 
                 className="field"
               />
             </div>
+          ))}
+        </div>
+      )}
+
+      {canRecordMeters && meters.length > 0 && (
+        <div>
+          <button type="button" onClick={() => setShowReadings((v) => !v)}
+            className="text-sm font-medium text-slate-600 dark:text-slate-300" aria-expanded={showReadings}>
+            {showReadings ? '▾' : '▸'} Meter readings <span className="text-xs text-slate-400 dark:text-slate-500 font-normal">(optional)</span>
+          </button>
+          {showReadings && (
+            <div className="space-y-2 mt-2">
+              {meters.map((m) => (
+                <div key={m.id}>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{m.name} at the service ({m.unit})</label>
+                  <input type="number" inputMode="decimal" step="any" value={readings[m.id] ?? ''}
+                    onChange={(e) => setReadings((prev) => ({ ...prev, [m.id]: e.target.value }))} className="field" />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {type === 'replacement' && canReplaceMeters && meters.length > 0 && (
+        <div className="space-y-1">
+          {meters.map((m) => (
+            <label key={m.id} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <input type="checkbox" checked={!!replaced[m.id]} className="w-4 h-4 mt-0.5 accent-blue-600"
+                onChange={(e) => setReplaced((prev) => ({ ...prev, [m.id]: e.target.checked }))} />
+              <span>Device replaced — restart &ldquo;{m.name}&rdquo; at 0 <span className="block text-xs text-slate-400 dark:text-slate-500">Its usage schedules start fresh.</span></span>
+            </label>
           ))}
         </div>
       )}

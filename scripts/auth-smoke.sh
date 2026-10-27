@@ -118,7 +118,7 @@ fi
 admin_perm_count=$(body GET /auth/me admin | node -e '
   let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
     try { console.log(JSON.parse(s).permissions.length) } catch { console.log(0) }})')
-expect "admin holds the whole catalogue" "37" "$admin_perm_count"
+expect "admin holds the whole catalogue" "41" "$admin_perm_count"
 
 # ---------------------------------------------------------------------------------------
 section "wrong credentials"
@@ -401,7 +401,8 @@ bbody() {
   [ -n "$data" ] && args+=(-H 'Content-Type: application/json' -d "$data")
   curl "${args[@]}" "$BASE$path"
 }
-days_from_now() { node -e 'console.log(new Date(Date.now()+Number(process.argv[1])*864e5).toISOString())' "$1"; }
+# Via the environment, not argv: node would read a negative day count ("-10") as an option.
+days_from_now() { DAYS="$1" node -e 'console.log(new Date(Date.now()+Number(process.env.DAYS)*864e5).toISOString())'; }
 user_id() { body GET /users admin | node -e '
   let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
     const u=JSON.parse(s).find(u=>u.username===process.argv[1]); console.log(u?u.id:"")})' "$1"; }
@@ -531,6 +532,225 @@ for id in $(body GET /auth/tokens admin | node -e '
 done
 
 status DELETE "/users/$svc_id" admin >/dev/null
+
+# ---------------------------------------------------------------------------------------
+section "meters and usage schedules"
+# rule_field RULE_ID FIELD  -- one field of one rule, from the item's schedule list
+rule_field() { body GET "/rules?equipment_id=$m_eq" admin | node -e '
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+    const r=JSON.parse(s).find(r=>r.id===process.argv[1]); const v=r?r[process.argv[2]]:undefined;
+    console.log(v===null||v===undefined?"null":v)})' "$1" "$2"; }
+record() { status POST "/meters/$1/readings" admin "{\"value\":$2${3:+,\"readAt\":\"$3\"}}"; }
+
+m_eq=$(body POST /equipment admin '{"name":"Smoke Meter Pump","kind":"Asset"}' | jq_r id)
+meter=$(body POST /meters admin "{\"equipmentId\":\"$m_eq\",\"name\":\"Operating hours\",\"unit\":\"h\"}" | jq_r id)
+expect "create a meter" "true" "$([ -n "$meter" ] && echo true || echo false)"
+expect "viewer can read meters" "200" "$(status GET "/meters?equipment_id=$m_eq" smokeviewer)"
+expect "viewer cannot record a reading" "403" "$(status POST "/meters/$meter/readings" smokeviewer '{"value":1}')"
+expect "anon cannot read meters" "401" "$(status GET "/meters?equipment_id=$m_eq" anon)"
+
+t10=$(days_from_now -10); t5=$(days_from_now -5); t1=$(days_from_now -1)
+expect "reading 100 h, 10 days ago" "201" "$(record "$meter" 100 "$t10")"
+expect "reading 110 h, 5 days ago" "201" "$(record "$meter" 110 "$t5")"
+expect "same instant, same value: a retry" "200" "$(record "$meter" 110 "$t5")"
+expect "same instant, other value" "409" "$(record "$meter" 111 "$t5")"
+expect "counter going backwards" "409" "$(record "$meter" 105)"
+expect "a reading in the future" "400" "$(record "$meter" 200 "$(days_from_now 2)")"
+count_before=$(body GET "/meters/$meter/readings" admin | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).length))')
+expect "unchanged value only confirms" "200" "$(record "$meter" 110 "$t1")"
+count_after=$(body GET "/meters/$meter/readings" admin | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).length))')
+expect "...and writes no row" "$count_before" "$count_after"
+rate=$(body GET "/meters/$meter" admin | jq_r ratePerDay)
+expect "usage rate is known" "true" "$([ -n "$rate" ] && [ "$rate" != "null" ] && echo true || echo false)"
+
+rule=$(body POST /rules admin "{\"equipmentId\":\"$m_eq\",\"name\":\"Service\",\"scheduleType\":\"Usage\",\"intervalValue\":0,\"intervalUnit\":\"Days\",\"dueWindowValue\":0,\"dueWindowUnit\":\"Days\",\"reminderLeadValue\":30,\"reminderLeadUnit\":\"Days\",\"meterId\":\"$meter\",\"usageInterval\":100,\"lastDoneValue\":50}" | jq_r id)
+expect "usage rule: 40 h left is Ok" "Ok" "$(rule_field "$rule" status)"
+expect "usage rule: due at 150 h" "150" "$(rule_field "$rule" dueValue)"
+expect "usage rule: forecast date" "true" "$([ "$(rule_field "$rule" dueAt)" != "null" ] && echo true || echo false)"
+record "$meter" 145 >/dev/null
+expect "within the 10% lead: Upcoming" "Upcoming" "$(rule_field "$rule" status)"
+record "$meter" 150 >/dev/null
+expect "at the threshold: Due" "Due" "$(rule_field "$rule" status)"
+record "$meter" 161 >/dev/null
+expect "past the 10% grace: Overdue" "Overdue" "$(rule_field "$rule" status)"
+
+expect "a time-based rule can't name a meter" "400" \
+  "$(status POST /rules admin "{\"storageLocationId\":null,\"equipmentId\":\"$m_eq\",\"scheduleType\":\"Usage\",\"intervalValue\":0,\"intervalUnit\":\"Days\",\"dueWindowValue\":0,\"dueWindowUnit\":\"Days\",\"reminderLeadValue\":30,\"reminderLeadUnit\":\"Days\",\"usageInterval\":100}")"
+
+# Logging the service with a typed reading rebaselines the schedule from it.
+code=$(status POST /events admin "{\"equipmentId\":\"$m_eq\",\"type\":\"maintenance\",\"note\":\"smoke service\",\"meterReadings\":[{\"meterId\":\"$meter\",\"value\":170}]}")
+expect "log a service with a meter reading" "201" "$code"
+expect "...restarts the usage rule from 170 h" "170" "$(rule_field "$rule" lastDoneValue)"
+expect "...so it is Ok again" "Ok" "$(rule_field "$rule" status)"
+expect "a refused reading fails the whole log" "409" \
+  "$(status POST /events admin "{\"equipmentId\":\"$m_eq\",\"type\":\"maintenance\",\"meterReadings\":[{\"meterId\":\"$meter\",\"value\":1}]}")"
+
+# A calendar ceiling that has already elapsed drives the status, and says so.
+ceil=$(body POST /rules admin "{\"equipmentId\":\"$m_eq\",\"scheduleType\":\"Usage\",\"intervalValue\":1,\"intervalUnit\":\"Days\",\"lastDoneAt\":\"$(days_from_now -3)\",\"dueWindowValue\":0,\"dueWindowUnit\":\"Days\",\"reminderLeadValue\":0,\"reminderLeadUnit\":\"Days\",\"meterId\":\"$meter\",\"usageInterval\":1000,\"lastDoneValue\":170}" | jq_r id)
+expect "ceiling elapsed: Overdue" "Overdue" "$(rule_field "$ceil" status)"
+expect "...because of time" "Time" "$(rule_field "$ceil" dueReason)"
+
+# The log form sends a bare date (midnight). A schedule set up earlier today must still be
+# moved by a service logged "today", not skipped as older than its own baseline.
+today=$(node -e 'const d=new Date();console.log(new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())).toISOString())')
+r3=$(body POST /rules admin "{\"equipmentId\":\"$m_eq\",\"scheduleType\":\"Usage\",\"intervalValue\":12,\"intervalUnit\":\"Months\",\"dueWindowValue\":0,\"dueWindowUnit\":\"Days\",\"reminderLeadValue\":30,\"reminderLeadUnit\":\"Days\",\"meterId\":\"$meter\",\"usageInterval\":500,\"lastDoneValue\":170}" | jq_r id)
+status POST /events admin "{\"equipmentId\":\"$m_eq\",\"type\":\"maintenance\",\"occurredAt\":\"$today\",\"meterReadings\":[{\"meterId\":\"$meter\",\"value\":180}]}" >/dev/null
+expect "date-only log today moves a rule set up today" "180" "$(rule_field "$r3" lastDoneValue)"
+
+# Counter reset on the same device: the total carries on.
+expect "rebase after a counter reset" "201" "$(status POST "/meters/$meter/rebase" admin '{"newRawValue":0}')"
+record "$meter" 5 >/dev/null
+expect "...raw 5 continues the total at 185 h" "185" "$(body GET "/meters/$meter" admin | jq_r currentValue)"
+
+# Device replaced: the meter and its schedules start over.
+expect "mark the device replaced" "201" "$(status POST "/meters/$meter/replace" admin '{"newRawValue":0}')"
+expect "...meter restarts at 0" "0" "$(body GET "/meters/$meter" admin | jq_r currentValue)"
+expect "...usage rule rebased to 0" "0" "$(rule_field "$rule" lastDoneValue)"
+expect "...and is Ok" "Ok" "$(rule_field "$rule" status)"
+expect "new device's 12 h is not 'backwards'" "201" "$(record "$meter" 12)"
+expect "a reading from before the replacement" "400" "$(record "$meter" 20 "$t1")"
+old_kept=$(body GET "/meters/$meter/readings?limit=100" admin | node -e '
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).some(r=>r.value===161)))')
+expect "old device's readings kept as history" "true" "$old_kept"
+
+expect "a meter with schedules can't be deleted" "400" "$(status DELETE "/meters/$meter" admin)"
+
+# A forecast needs history; one reading isn't enough.
+meter2=$(body POST /meters admin "{\"equipmentId\":\"$m_eq\",\"name\":\"Starts\",\"unit\":\"cycles\"}" | jq_r id)
+record "$meter2" 10 >/dev/null
+r2=$(body POST /rules admin "{\"equipmentId\":\"$m_eq\",\"scheduleType\":\"Usage\",\"intervalValue\":0,\"intervalUnit\":\"Days\",\"dueWindowValue\":0,\"dueWindowUnit\":\"Days\",\"reminderLeadValue\":0,\"reminderLeadUnit\":\"Days\",\"meterId\":\"$meter2\",\"usageInterval\":100,\"lastDoneValue\":10}" | jq_r id)
+expect "single reading: no forecast date" "null" "$(rule_field "$r2" dueAt)"
+
+# An integration's token: record readings, nothing more.
+old_isvc=$(user_id smokemetersvc); [ -n "$old_isvc" ] && status DELETE "/users/$old_isvc" admin >/dev/null
+isvc=$(body POST /users admin "{\"username\":\"smokemetersvc\",\"isActive\":true,\"roleIds\":[\"$member_role\"],\"kind\":\"Service\"}" | jq_r id)
+itok=$(body POST "/users/$isvc/tokens" admin '{"name":"ha","permissions":["equipment.read","rules.read","meters.read","meters.record"]}' | jq_r token)
+expect "integration token records a reading" "201" \
+  "$(bstatus POST "/meters/$meter/readings" "$itok" '{"value":20,"source":"homeassistant"}')"
+expect "integration token reads the schedule" "200" "$(bstatus GET "/rules?equipment_id=$m_eq" "$itok")"
+expect "integration token can't create meters" "403" \
+  "$(bstatus POST /meters "$itok" "{\"equipmentId\":\"$m_eq\",\"name\":\"x\",\"unit\":\"h\"}")"
+expect "integration token can't change schedules" "403" "$(bstatus PUT "/rules/$rule" "$itok" '{"usageInterval":1}')"
+batch=$(bbody POST /meters/readings "$itok" "[{\"meterId\":\"$meter\",\"value\":25},{\"meterId\":\"00000000-0000-0000-0000-000000000000\",\"value\":1}]" \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).map(r=>r.status).join(",")))')
+expect "batch push reports per item" "201,404" "$batch"
+
+status DELETE "/users/$isvc" admin >/dev/null
+expect "deleting the item takes its meters along" "204" "$(status DELETE "/equipment/$m_eq" admin)"
+expect "...meter gone" "404" "$(status GET "/meters/$meter" admin)"
+
+# ---------------------------------------------------------------------------------------
+section "meter retention"
+# iso EXPR  -- evaluate a JS Date expression (d = today 00:00 UTC) to an ISO string
+iso() { EXPR="$1" node -e '
+  const n=new Date(); const d=new Date(Date.UTC(n.getUTCFullYear(),n.getUTCMonth(),n.getUTCDate()));
+  const day=864e5; console.log(new Date(eval(process.env.EXPR)).toISOString())'; }
+rec_src() { status POST "/meters/$1/readings" admin "{\"value\":$2,\"readAt\":\"$3\"${4:+,\"source\":\"$4\"}}"; }
+
+r_eq=$(body POST /equipment admin '{"name":"Smoke Retention Pump","kind":"Asset"}' | jq_r id)
+r_m=$(body POST /meters admin "{\"equipmentId\":\"$r_eq\",\"name\":\"Hours\",\"unit\":\"h\"}" | jq_r id)
+
+# Oldest first, so every backfill climbs. Each group sits in a single bucket of its tier.
+# Month tier (~2000 days ago): days 2..6 of one month — the first is the meter's first reading.
+for i in 1 2 3 4 5; do
+  t=$(iso "(()=>{const o=new Date(d.getTime()-2000*day);return Date.UTC(o.getUTCFullYear(),o.getUTCMonth(),1+$i,12)})()")
+  rec_src "$r_m" $((i * 10)) "$t" >/dev/null
+done
+# Week tier (~1000 days ago): Tuesday..Saturday of one ISO week.
+for i in 1 2 3 4 5; do
+  t=$(iso "(()=>{const o=new Date(d.getTime()-1000*day);const mon=o.getTime()-((o.getUTCDay()+6)%7)*day;return mon+$i*day+12*3600e3})()")
+  rec_src "$r_m" $((100 + i)) "$t" >/dev/null
+done
+# Day tier (~100 days ago): twelve readings within one UTC day, one typed by hand.
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  src=""; [ "$i" = 6 ] && src="manual"
+  rec_src "$r_m" $((200 + i)) "$(iso "d.getTime()-100*day+$i*3600e3")" "$src" >/dev/null
+done
+# Full detail (recent): left alone.
+for i in 10 5 1; do rec_src "$r_m" $((330 - i)) "$(iso "d.getTime()-$i*day")" >/dev/null; done
+
+expect "member cannot run the thinning" "403" "$(status POST /meters/prune smokemember)"
+expect "admin runs the thinning" "200" "$(status POST /meters/prune admin)"
+tier_counts=$(body GET "/meters/$r_m/readings?limit=1000" admin | node -e '
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s).map(r=>r.value);
+    const n=(a,b)=>v.filter(x=>x>=a&&x<b).length;
+    console.log([n(0,100),n(100,200),n(200,300),n(300,1e9)].join(","))})')
+# month: first (pinned) + last; week: last; day: last + manual; full detail: all 3
+expect "kept per tier (month,week,day,full)" "2,1,2,3" "$tier_counts"
+expect "thinning again deletes nothing" "0" "$(body POST /meters/prune admin | jq_r total)"
+
+# Between kept readings, the value at a time is interpolated, not stepped.
+r_m2=$(body POST /meters admin "{\"equipmentId\":\"$r_eq\",\"name\":\"Starts\",\"unit\":\"cycles\"}" | jq_r id)
+rec_src "$r_m2" 1000 "$(iso "d.getTime()-10*day")" >/dev/null
+rec_src "$r_m2" 2000 "$(iso "d.getTime()-8*day")" >/dev/null
+r_rule=$(body POST /rules admin "{\"equipmentId\":\"$r_eq\",\"scheduleType\":\"Usage\",\"intervalValue\":0,\"intervalUnit\":\"Days\",\"dueWindowValue\":0,\"dueWindowUnit\":\"Days\",\"reminderLeadValue\":0,\"reminderLeadUnit\":\"Days\",\"meterId\":\"$r_m2\",\"usageInterval\":500}" | jq_r id)
+status POST /events admin "{\"equipmentId\":\"$r_eq\",\"type\":\"maintenance\",\"occurredAt\":\"$(iso "d.getTime()-9*day+12*3600e3")\"}" >/dev/null
+# 36 h into a 48 h gap from 1000 to 2000.
+expect "back-dated log interpolates the count" "1750" "$(body GET "/rules?equipment_id=$r_eq" admin | node -e '
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).find(r=>r.id===process.argv[1]).lastDoneValue))' "$r_rule")"
+
+# The windows are validated: forecasts need a month of full detail, and each tier must be longer.
+settings_with() { body GET /app-settings admin | PATCH="$1" node -e '
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.stringify({...JSON.parse(s),...JSON.parse(process.env.PATCH)})))'; }
+expect "full detail under 31 days is refused" "400" \
+  "$(status PUT /app-settings admin "$(settings_with '{"meterFullDetailDays":20}')")"
+expect "daily not longer than full detail is refused" "400" \
+  "$(status PUT /app-settings admin "$(settings_with '{"meterFullDetailDays":90,"meterDailyDays":60}')")"
+expect "valid windows save" "200" "$(status PUT /app-settings admin "$(settings_with '{}')")"
+
+status DELETE "/equipment/$r_eq" admin >/dev/null
+
+# ---------------------------------------------------------------------------------------
+section "deleting history entries"
+d_eq=$(body POST /equipment admin '{"name":"Smoke Delete Target","kind":"Asset"}' | jq_r id)
+d_rule_field() { body GET "/rules?equipment_id=$d_eq" admin | node -e '
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+    const r=JSON.parse(s).find(r=>r.id===process.argv[1]); const v=r?r[process.argv[2]]:undefined;
+    console.log(v===null||v===undefined?"null":v)})' "$1" "$2"; }
+same_instant() { node -e 'console.log(new Date(process.argv[1]).getTime()===new Date(process.argv[2]).getTime())' "$1" "$2"; }
+
+iv=$(body POST /rules admin "{\"equipmentId\":\"$d_eq\",\"scheduleType\":\"Interval\",\"intervalValue\":30,\"intervalUnit\":\"Days\",\"dueWindowValue\":0,\"dueWindowUnit\":\"Days\",\"reminderLeadValue\":7,\"reminderLeadUnit\":\"Days\"}" | jq_r id)
+d_meter=$(body POST /meters admin "{\"equipmentId\":\"$d_eq\",\"name\":\"Hours\",\"unit\":\"h\"}" | jq_r id)
+# Readings exactly at the two events' times, so the value at each is exact rather than
+# interpolated between neighbours.
+t_a=$(days_from_now -5); t_b=$(days_from_now -1)
+record "$d_meter" 100 "$t_a" >/dev/null
+record "$d_meter" 150 "$t_b" >/dev/null
+record "$d_meter" 200 >/dev/null
+us=$(body POST /rules admin "{\"equipmentId\":\"$d_eq\",\"scheduleType\":\"Usage\",\"intervalValue\":0,\"intervalUnit\":\"Days\",\"dueWindowValue\":0,\"dueWindowUnit\":\"Days\",\"reminderLeadValue\":0,\"reminderLeadUnit\":\"Days\",\"meterId\":\"$d_meter\",\"usageInterval\":500}" | jq_r id)
+
+ev_a=$(body POST /events admin "{\"equipmentId\":\"$d_eq\",\"type\":\"maintenance\",\"occurredAt\":\"$t_a\"}" | jq_r id)
+ev_b=$(body POST /events admin "{\"equipmentId\":\"$d_eq\",\"type\":\"maintenance\",\"occurredAt\":\"$t_b\"}" | jq_r id)
+expect "usage baseline from the later event" "150" "$(d_rule_field "$us" lastDoneValue)"
+
+expect "member cannot delete an entry" "403" "$(status DELETE "/events/$ev_b" smokemember)"
+expect "anon cannot delete an entry" "401" "$(status DELETE "/events/$ev_b" anon)"
+expect "admin deletes the later entry" "204" "$(status DELETE "/events/$ev_b" admin)"
+expect "interval rule reverts to the earlier entry" "true" "$(same_instant "$(d_rule_field "$iv" lastDoneAt)" "$t_a")"
+expect "usage rule reverts to the earlier count" "100" "$(d_rule_field "$us" lastDoneValue)"
+expect "delete the only remaining entry" "204" "$(status DELETE "/events/$ev_a" admin)"
+expect "interval rule is 'never done' again" "null" "$(d_rule_field "$iv" lastDoneAt)"
+expect "usage rule is 'never done' again" "null" "$(d_rule_field "$us" lastDoneValue)"
+expect "...and reads Due" "Due" "$(d_rule_field "$us" status)"
+expect "meter readings survive the deletes" "200" "$(body GET "/meters/$d_meter" admin | jq_r currentValue)"
+
+# Parts consumed by the entry go back into stock.
+part=$(body POST /parts admin '{"name":"Smoke filter","quantity":10,"unit":"pcs"}' | jq_r id)
+ev_c=$(body POST /events admin "{\"equipmentId\":\"$d_eq\",\"type\":\"replacement\"}" | jq_r id)
+status POST /part-usages admin "{\"maintenanceEventId\":\"$ev_c\",\"partId\":\"$part\",\"quantityUsed\":3}" >/dev/null
+expect "using 3 filters leaves 7" "7" "$(body GET "/parts/$part" admin | jq_r quantity)"
+expect "delete the entry that used them" "204" "$(status DELETE "/events/$ev_c" admin)"
+expect "...stock is back to 10" "10" "$(body GET "/parts/$part" admin | jq_r quantity)"
+status DELETE "/parts/$part" admin >/dev/null
+
+# A place with history is kept — until the history itself is deliberately deleted.
+d_place=$(body POST /storage-locations admin '{"name":"Smoke Delete Room"}' | jq_r id)
+ev_p=$(body POST /events admin "{\"storageLocationId\":\"$d_place\",\"type\":\"cleaning\"}" | jq_r id)
+expect "a place with history can't be deleted" "400" "$(status DELETE "/storage-locations/$d_place" admin)"
+expect "delete the place's entry" "204" "$(status DELETE "/events/$ev_p" admin)"
+expect "...then the place can go" "204" "$(status DELETE "/storage-locations/$d_place" admin)"
+
+status DELETE "/equipment/$d_eq" admin >/dev/null
 
 # ---------------------------------------------------------------------------------------
 section "sign out"

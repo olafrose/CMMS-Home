@@ -13,11 +13,12 @@ import { locationPath } from '@/lib/storage'
 import ExternalLinkList from '@/components/ExternalLinkList'
 import MaintenanceSchedule from '@/components/MaintenanceSchedule'
 import MaintenanceHistory from '@/components/MaintenanceHistory'
+import MeterList from '@/components/MeterList'
 import WarrantyFields, { EMPTY_WARRANTY, warrantyFromEquipment, warrantyToDto, type WarrantyValues } from '@/components/WarrantyFields'
 import { api } from '@/lib/api'
 import type {
   Category, Document, Equipment, EquipmentKind, MaintenanceEvent, MaintenanceRule,
-  Part, StorageLocation, WarrantyStatus,
+  Meter, Part, StorageLocation, WarrantyStatus,
 } from '@/lib/types'
 
 const KINDS: EquipmentKind[] = ['Asset', 'Tool', 'Both']
@@ -43,6 +44,7 @@ export default function EquipmentDetailPage() {
   const [item, setItem] = useState<Equipment | null>(null)
   const [events, setEvents] = useState<MaintenanceEvent[]>([])
   const [rules, setRules] = useState<MaintenanceRule[]>([])
+  const [meters, setMeters] = useState<Meter[]>([])
   const [parts, setParts] = useState<Part[]>([])
   const [documents, setDocuments] = useState<Document[]>([])
   const [allEquipment, setAllEquipment] = useState<Equipment[]>([])
@@ -86,6 +88,19 @@ export default function EquipmentDetailPage() {
     api.parts.list({ equipmentId: id }).then(setParts).catch(() => {})
     api.documents.list({ equipmentId: id }).then(setDocuments).catch(() => {})
   }, [id])
+
+  // Separate from the main load: meters need meters.read, which plenty of roles lack, and a
+  // refusal must not take the rest of the page down with it.
+  const canReadMeters = can('meters.read')
+  useEffect(() => {
+    if (authLoading || !canReadMeters) return
+    api.meters.list(id).then(setMeters).catch(() => {})
+  }, [id, authLoading, canReadMeters])
+
+  // A reading moves a counter, and usage schedules' status is computed from it server-side.
+  function reloadRules() {
+    api.rules.list({ kind: 'equipment', id }).then(setRules).catch(() => {})
+  }
 
   async function saveItem() {
     setSavingItem(true)
@@ -258,7 +273,9 @@ export default function EquipmentDetailPage() {
         <Link href={`/equipment/${id}/log`} className="block w-full bg-blue-600 text-white text-center font-semibold py-4 rounded-xl shadow text-lg">+ Log Maintenance</Link>
       )}
 
-      <MaintenanceSchedule target={{ kind: 'equipment', id }} rules={rules} setRules={setRules} />
+      <MaintenanceSchedule target={{ kind: 'equipment', id }} rules={rules} setRules={setRules} meters={meters} />
+
+      {canReadMeters && <MeterList equipmentId={id} meters={meters} setMeters={setMeters} onChanged={reloadRules} />}
 
       {/* QR */}
       <section>
