@@ -753,6 +753,54 @@ expect "...then the place can go" "204" "$(status DELETE "/storage-locations/$d_
 status DELETE "/equipment/$d_eq" admin >/dev/null
 
 # ---------------------------------------------------------------------------------------
+section "anonymous vs label scan"
+label_role=$(role_id "Label scan")
+expect "the Label scan role exists" "true" "$([ -n "$label_role" ] && echo true || echo false)"
+s_a=$(body POST /equipment admin '{"name":"Smoke Split A","kind":"Asset"}' | jq_r id)
+s_b=$(body POST /equipment admin '{"name":"Smoke Split B","kind":"Asset"}' | jq_r id)
+s_ev='{"equipmentId":"'"$s_b"'","type":"cleaning"}'
+
+# Seeded: Anonymous holds nothing, so without a label nothing about any item is reachable.
+expect "no label: GET /events (whole history)" "401" "$(status GET /events anon)"
+expect "no label: GET /equipment/{id}" "401" "$(status GET "/equipment/$s_a" anon)"
+expect "no label: POST /events on any item" "401" "$(status POST /events anon "$s_ev")"
+
+# A label for A: the Label scan rights, on A only.
+s_tok=$(body GET "/auth/label-tokens?equipment_id=$s_a" admin | node -e '
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(Object.values(JSON.parse(s))[0]))')
+status POST /auth/label-session slabel "{\"equipmentId\":\"$s_a\",\"token\":\"$s_tok\"}" >/dev/null
+expect "label A: GET /equipment/A" "200" "$(status GET "/equipment/$s_a" slabel)"
+expect "label A: POST /events on B" "403" "$(status POST /events slabel "$s_ev")"
+
+# Widen Anonymous to browsing (the live stopgap). A label must then add, never take away.
+status PUT /roles/permissions admin "{\"grants\":{\"$anon_role\":[\"equipment.read\",\"equipment.list\",\"events.read\"]}}" >/dev/null
+expect "browsing Anonymous, no label: list" "200" "$(status GET /equipment anon)"
+expect "browsing Anonymous, label A: list too" "200" "$(status GET /equipment slabel)"
+expect "browsing Anonymous, label A: GET /equipment/B" "200" "$(status GET "/equipment/$s_b" slabel)"
+expect "browsing Anonymous, label A: GET /events (all)" "200" "$(status GET /events slabel)"
+# events.create still comes only from the label, so it is still scoped to A.
+expect "label-only right stays scoped: POST on B" "403" "$(status POST /events slabel "$s_ev")"
+expect "...and works on A" "201" \
+  "$(status POST /events slabel "{\"equipmentId\":\"$s_a\",\"type\":\"cleaning\"}")"
+status PUT /roles/permissions admin "{\"grants\":{\"$anon_role\":[]}}" >/dev/null
+
+# The grid keeps Label scan to what a label can actually reach.
+expect "Label scan can't hold a browse right" "400" \
+  "$(status PUT /roles/permissions admin "{\"grants\":{\"$label_role\":[\"equipment.read\",\"equipment.list\"]}}")"
+expect "Label scan can't hold an admin right" "400" \
+  "$(status PUT /roles/permissions admin "{\"grants\":{\"$label_role\":[\"users.manage\"]}}")"
+expect "Label scan can't be deleted" "400" "$(status DELETE "/roles/$label_role" admin)"
+held=$(body POST /users admin "{\"username\":\"smokesplit\",\"password\":\"smoke-pw-12345\",\"isActive\":true,\"roleIds\":[\"$label_role\",\"$anon_role\"]}" \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).roles.length))')
+expect "nobody can be given Label scan or Anonymous" "0" "$held"
+s_u=$(user_id smokesplit); [ -n "$s_u" ] && status DELETE "/users/$s_u" admin >/dev/null
+# Admin's own guard is still Admin's alone (the check no longer reads "system and not anonymous").
+expect "Admin still can't drop users.manage" "400" \
+  "$(status PUT /roles/permissions admin "{\"grants\":{\"$admin_role\":[\"equipment.read\"]}}")"
+
+status DELETE "/equipment/$s_a" admin >/dev/null; status DELETE "/equipment/$s_b" admin >/dev/null
+
+# ---------------------------------------------------------------------------------------
 section "sign-in redirect follows the Anonymous role (web proxy)"
 # Only meaningful through the web port: the redirect lives in the Next.js proxy, not the API.
 if [[ "$BASE" == */api ]]; then

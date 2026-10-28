@@ -199,8 +199,10 @@ export default function RolesSection({ roles, gridDirty, onChanged }: {
                   </p>
                   <p className="text-xs text-slate-400 dark:text-slate-500">
                     {role.isAnonymous
-                      ? 'Everyone who is not signed in'
-                      : role.memberCount === 0
+                      ? 'Everyone who is not signed in, on everything'
+                      : role.isLabelScan
+                        ? 'Added by a scanned label, for that item or place only'
+                        : role.memberCount === 0
                         ? 'No members'
                         : `${role.memberCount} member${role.memberCount === 1 ? '' : 's'}`}
                   </p>
@@ -265,7 +267,9 @@ export default function RolesSection({ roles, gridDirty, onChanged }: {
                 Built into the app and cannot be deleted
                 {role.isAnonymous
                   ? ' — it is the not-signed-in subject, so it has no members.'
-                  : ' — it is the way back in. It can be renamed, and its rights edited apart from the locked ones.'}
+                  : role.isLabelScan
+                    ? ' — it applies to whoever holds a scanned label, so it has no members.'
+                    : ' — it is the way back in. It can be renamed, and its rights edited apart from the locked ones.'}
               </p>
             )}
 

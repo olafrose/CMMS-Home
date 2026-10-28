@@ -57,7 +57,8 @@ export default function UsersSection({ roles }: { roles: AccessRole[] }) {
   }, [])
 
   const roleOptions = useMemo(() => {
-    if (roles.length > 0) return roles.map(r => ({ id: r.id, name: r.name }))
+    // Anonymous and Label scan describe callers without an account; nobody can hold them.
+    if (roles.length > 0) return roles.filter(r => !r.isAnonymous && !r.isLabelScan).map(r => ({ id: r.id, name: r.name }))
     const seen = new Map<string, string>()
     for (const u of users) for (const r of u.roles) seen.set(r.id, r.name)
     return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))

@@ -16,6 +16,7 @@ import MaintenanceHistory from '@/components/MaintenanceHistory'
 import MeterList from '@/components/MeterList'
 import WarrantyFields, { EMPTY_WARRANTY, warrantyFromEquipment, warrantyToDto, type WarrantyValues } from '@/components/WarrantyFields'
 import { api } from '@/lib/api'
+import { optional } from '@/lib/load'
 import type {
   Category, Document, Equipment, EquipmentKind, MaintenanceEvent, MaintenanceRule,
   Meter, Part, StorageLocation, WarrantyStatus,
@@ -79,8 +80,12 @@ export default function EquipmentDetailPage() {
 
   useEffect(() => {
     setOrigin(window.location.origin)
-    Promise.all([api.equipment.get(id), api.events.list({ kind: 'equipment', id }), api.rules.list({ kind: 'equipment', id }),
-      api.equipment.list(), api.categories.list(), api.storageLocations.list()])
+    // Only the item itself is required. The rest needs rights a viewer — or a scanned label,
+    // which may read this one item but not browse — can lack; each just leaves its section
+    // empty rather than turning the whole page into "Not found".
+    Promise.all([api.equipment.get(id),
+      optional(api.events.list({ kind: 'equipment', id }), []), optional(api.rules.list({ kind: 'equipment', id }), []),
+      optional(api.equipment.list(), []), optional(api.categories.list(), []), optional(api.storageLocations.list(), [])])
       .then(([e, ev, r, all, cats, locs]) => {
         setItem(e); setEvents(ev); setRules(r); setAllEquipment(all); setCategories(cats); setLocations(locs); seed(e)
       })

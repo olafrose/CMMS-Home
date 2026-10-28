@@ -434,7 +434,17 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
         SeedRoles(modelBuilder);
     }
 
-    // The four roles every install starts with, and their grants.
+    // What the Label scan role starts with — and, before it existed, what Anonymous was seeded
+    // with. The SplitLabelScanRole migration compares Anonymous against exactly this set.
+    public static readonly string[] LabelScanDefaults =
+    [
+        Permissions.EquipmentRead,
+        Permissions.EventsRead,
+        Permissions.EventsCreate,
+        Permissions.RulesRead,
+    ];
+
+    // The five roles every install starts with, and their grants.
     //
     // Grants are computed from the Permissions catalogue rather than written out as ~90
     // literal rows: the seed then cannot drift out of sync with the catalogue, and adding a
@@ -462,12 +472,18 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             Id = SeededRoles.Anonymous, Name = "Anonymous",
             IsSystem = true, IsAnonymous = true, SortOrder = 4,
         };
+        var labelScan = new Role
+        {
+            Id = SeededRoles.LabelScan, Name = "Label scan",
+            IsSystem = true, IsLabelScan = true, SortOrder = 5,
+        };
 
-        modelBuilder.Entity<Role>().HasData(admin, member, viewer, anonymous);
+        modelBuilder.Entity<Role>().HasData(admin, member, viewer, anonymous, labelScan);
 
         // Admin: everything. Member: everything day-to-day, but not administering the app.
-        // Viewer: read-only, and not the sensitive documents. Anonymous: exactly enough to
-        // scan a label, log maintenance, and see what was logged — no browsing.
+        // Viewer: read-only, and not the sensitive documents. Anonymous: nothing — not signing
+        // in grants nothing anywhere. Label scan: exactly enough to log maintenance on the
+        // scanned item and see what was logged there.
         var adminGrants = Permissions.AllKeys;
 
         // Tokens and the API docs are opt-in beyond Admin: both are about scripting the app,
@@ -494,19 +510,11 @@ public class CmmsDbContext(DbContextOptions<CmmsDbContext> options) : DbContext(
             Permissions.MetersRead,
         ];
 
-        string[] anonymousGrants =
-        [
-            Permissions.EquipmentRead,
-            Permissions.EventsRead,
-            Permissions.EventsCreate,
-            Permissions.RulesRead,
-        ];
-
         modelBuilder.Entity<RolePermission>().HasData(
             Grants(admin.Id, adminGrants)
                 .Concat(Grants(member.Id, memberGrants))
                 .Concat(Grants(viewer.Id, viewerGrants))
-                .Concat(Grants(anonymous.Id, anonymousGrants))
+                .Concat(Grants(labelScan.Id, LabelScanDefaults))
                 .ToArray());
 
         static IEnumerable<RolePermission> Grants(Guid roleId, IEnumerable<string> permissions) =>
@@ -522,4 +530,5 @@ public static class SeededRoles
     public static readonly Guid Member = new("a0000000-0000-0000-0000-000000000002");
     public static readonly Guid Viewer = new("a0000000-0000-0000-0000-000000000003");
     public static readonly Guid Anonymous = new("a0000000-0000-0000-0000-000000000004");
+    public static readonly Guid LabelScan = new("a0000000-0000-0000-0000-000000000005");
 }

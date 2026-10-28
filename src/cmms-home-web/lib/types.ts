@@ -440,16 +440,20 @@ export interface PermissionInfo {
   allowedForAnonymous: boolean
   /** True for permissions Admin can never give up — rendered locked on. */
   alwaysOnForAdmin: boolean
+  /** May be held by Label scan: it guards a route a scanned label can reach. */
+  labelScopable: boolean
 }
 
 /** One column of the grid. */
 export interface AccessRole {
   id: string
   name: string
-  /** Built-in and undeletable: Admin and Anonymous. */
+  /** Built-in and undeletable: Admin, Anonymous and Label scan. */
   isSystem: boolean
-  /** The not-signed-in subject. Has no members by definition. */
+  /** The not-signed-in subject, everywhere. Has no members by definition. */
   isAnonymous: boolean
+  /** What a scanned label adds, on that one item or place only. No members either. */
+  isLabelScan: boolean
   isDefaultForNewUsers: boolean
   sortOrder: number
   memberCount: number

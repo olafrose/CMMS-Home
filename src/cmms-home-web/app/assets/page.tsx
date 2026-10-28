@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { loadErrorMessage, optional } from '@/lib/load'
 import { formatLocationPath } from '@/lib/storage'
 import type { AppSettings, Equipment, StorageLocation } from '@/lib/types'
 
@@ -52,6 +53,7 @@ function ActiveChip({ label, onClear }: { label: string; onClear: () => void }) 
 export default function AssetsPage() {
   const [assets, setAssets] = useState<Equipment[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [activeLocation, setActiveLocation] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
@@ -62,8 +64,10 @@ export default function AssetsPage() {
   const [settings, setSettings] = useState<AppSettings>()
 
   useEffect(() => {
-    Promise.all([api.equipment.list({ kind: 'asset' }), api.storageLocations.list(), api.appSettings.get()])
+    // Only the list itself is required; the tree and settings just shape breadcrumbs.
+    Promise.all([api.equipment.list({ kind: 'asset' }), optional(api.storageLocations.list(), []), optional(api.appSettings.get(), undefined)])
       .then(([a, p, s]) => { setAssets(a); setPlaces(p); setSettings(s) })
+      .catch((e) => setLoadError(loadErrorMessage(e, 'the assets')))
       .finally(() => setLoading(false))
   }, [])
 
@@ -163,8 +167,9 @@ export default function AssetsPage() {
       )}
 
       {loading && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}
+      {loadError && <p className="text-sm text-red-500">{loadError}</p>}
 
-      {!loading && assets.length === 0 && (
+      {!loading && !loadError && assets.length === 0 && (
         <div className="text-center py-16 text-slate-400">
           <p className="text-4xl mb-3">🔧</p>
           <p className="font-medium">No assets yet</p>

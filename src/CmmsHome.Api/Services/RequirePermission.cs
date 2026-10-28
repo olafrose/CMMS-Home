@@ -100,11 +100,17 @@ public static class RequirePermissionExtensions
         if (actor.IsApiToken && http.GetEndpoint()?.Metadata.GetMetadata<SessionOnlyMetadata>() is not null)
             return TokenRefused(http);
 
-        // Permission held, but by a caller who only proved they hold a printed label.
-        if (actor.IsLabelScoped && http.GetEndpoint()?.Metadata.GetMetadata<LabelScopeAllowedMetadata>() is null)
-            return Problem(http, 403, "Sign in required",
-                "Scanning a label allows logging maintenance on that one item. Sign in to do more.",
-                new Dictionary<string, object?> { ["permission"] = permission, ["labelScoped"] = true });
+        // Held only because a label was scanned (Anonymous itself lacks it): good for the
+        // scanned target alone. Only routes marked .AllowLabelScope() can tell which target a
+        // request names, so everything else refuses; those that can then check MayTouch*.
+        if (actor.IsLabelScoped && actor.UnscopedPermissions?.Contains(permission) == false)
+        {
+            if (http.GetEndpoint()?.Metadata.GetMetadata<LabelScopeAllowedMetadata>() is null)
+                return Problem(http, 403, "Sign in required",
+                    "Scanning a label allows logging maintenance on that one item. Sign in to do more.",
+                    new Dictionary<string, object?> { ["permission"] = permission, ["labelScoped"] = true });
+            actor.ScopeEnforced = true;
+        }
 
         return null;
     }

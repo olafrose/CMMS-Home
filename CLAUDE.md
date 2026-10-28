@@ -184,7 +184,7 @@ AppSettings         { Id=1, StorageMaxDepth, PathShorteningMode(Full|LastNSegmen
                       MeterFullDetailDays, MeterDailyDays, MeterWeeklyDays }   # meter reading retention
 User                { Id, Username*, DisplayName?, Kind(Person|Service), IsActive, CreatedAt, LastLoginAt? }   # no credentials here
 UserIdentity        { Id, UserId, Provider, Subject, PasswordHash?, CreatedAt, LastUsedAt? }
-Role                { Id, Name*, IsSystem, IsAnonymous, IsDefaultForNewUsers, SortOrder }
+Role                { Id, Name*, IsSystem, IsAnonymous, IsLabelScan, IsDefaultForNewUsers, SortOrder }
 UserRole            { UserId, RoleId }              # m:n — a user holds the union of their roles' grants
 RolePermission      { RoleId, Permission }          # grant rows; absence = deny, no deny rows exist
 Session             { Id, UserId, TokenHash, UserIdentityId?, CreatedAt, ExpiresAt, LastSeenAt, UserAgent? }
@@ -280,7 +280,9 @@ Roles:       CRUD /roles  |  PUT /roles/permissions   # the whole grid, roleId -
 **Every route carries a permission.** `.RequirePermission(Permissions.X)` is attached per
 route (never per group — a group default would silently cover a route added later), and
 `app.AuditPermissionCoverage()` **fails startup** if any endpoint has neither a permission nor
-an explicit `.Public("why")`/`.RequireAuthenticated()`. Full endpoint→permission table:
+an explicit `.Public("why")`/`.RequireAuthenticated()`. It must read
+`((IEndpointRouteBuilder)app).DataSources`. The `EndpointDataSource` service is empty at startup,
+and reading it once made the audit pass everything. Full endpoint→permission table:
 `docs/authentication.md`.
 
 ## Documents
@@ -471,17 +473,20 @@ written for that consumer and not yet wired to an endpoint.
 Full design and the endpoint→permission table: `docs/authentication.md`. The parts that will
 bite you if you don't know them:
 
-- **"Not signed in" is a Role, not a code path.** `Anonymous` is a row in the `Roles` table
-  with `IsAnonymous`, and every request without a session is evaluated against it. That is what
-  makes "can a scanned label log maintenance without an account?" a checkbox in
-  `/settings/access` rather than a branch in the code. Seeded with `equipment.read`,
-  `events.read`, `events.create`, `rules.read` — the quick-log and nothing else.
+- **"Not signed in" is two roles, not a code path.** `Anonymous` (`IsAnonymous`) is what anyone
+  may do, **everywhere**; it is seeded with nothing. `Label scan` (`IsLabelScan`) is what a
+  scanned label **adds**, on that one target only; it is seeded with `equipment.read`,
+  `events.read`, `events.create`, `rules.read`. Neither has members. A label holder gets
+  Anonymous ∪ Label scan.
 - **The grid says *what*, the label token says *which*.** A printed QR carries
   `?t=HMAC(LabelSigningKey, "equipment:{id}")[..16]`, exchanged at `POST /auth/label-session`
-  for a 2h signed cookie naming one item. Routes a scan may reach are marked
-  `.AllowLabelScope()` and must call `actor.MayTouchEquipment(id)` themselves — the filter
-  can't know if the id is in the route, query or body. Everything else refuses a label-scoped
-  caller outright.
+  for a 2h signed cookie naming one item. A right a label holder has **only via Label scan** is
+  scoped: the filter refuses it on any route not marked `.AllowLabelScope()`, and on those routes
+  it sets `actor.ScopeEnforced`, so the handler's `MayTouchEquipment`/`MayTouchTarget` bites. A
+  right Anonymous also holds is unscoped, so a label never leaves anyone with *less*. Label scan
+  may only hold `LabelScopable` permissions, and the audit keeps those in step with the routes.
+- **The Admin role is `SeededRoles.Admin`, by id.** Never test "system and not anonymous": Label
+  scan is a third system role.
 - **Credentials live in `UserIdentity`, not on `User`** (`Provider`/`Subject`, `"local"` for a
   password). Adding an identity provider later is an insert plus a callback, not a migration of
   the user table. Roles hang off `User` and are indifferent to how someone signed in.

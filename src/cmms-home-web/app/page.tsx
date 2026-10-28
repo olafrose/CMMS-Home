@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { loadErrorMessage, optional } from '@/lib/load'
 import { DEFAULT_LOCATION_ICON, formatLocationPath } from '@/lib/storage'
 import { eventHref, targetHref, targetLogHref, targetOf } from '@/lib/maintenance'
 import { usageProgress } from '@/lib/meters'
@@ -59,11 +60,17 @@ export default function DashboardPage() {
   const [locations, setLocations] = useState<StorageLocation[]>([])
   const [settings, setSettings] = useState<AppSettings>()
   const [loading, setLoading] = useState(true)
+  // The schedule is the dashboard's point; every other section is optional and simply
+  // stays hidden when its read is refused (each needs a different right).
+  const [rulesError, setRulesError] = useState('')
 
   useEffect(() => {
     Promise.all([
-      api.equipment.list(), api.rules.list(), api.events.list(), api.parts.list({ lowStock: true }),
-      api.equipment.list({ onLoan: true }), api.storageLocations.list(), api.appSettings.get(),
+      optional(api.equipment.list(), []),
+      api.rules.list().catch((err) => { setRulesError(loadErrorMessage(err, 'the maintenance schedule')); return [] }),
+      optional(api.events.list(), []), optional(api.parts.list({ lowStock: true }), []),
+      optional(api.equipment.list({ onLoan: true }), []), optional(api.storageLocations.list(), []),
+      optional(api.appSettings.get(), undefined),
     ])
       .then(([eq, r, e, p, loaned, places, s]) => {
         setEquipment(Object.fromEntries(eq.map((x) => [x.id, x])))
@@ -107,6 +114,8 @@ export default function DashboardPage() {
         <h1 className="text-xl font-bold text-white mb-1">CMMS@home</h1>
         {loading ? (
           <p className="text-white/70 text-sm">Loading…</p>
+        ) : rulesError ? (
+          <p className="text-white/80 text-sm">{rulesError}</p>
         ) : overdue.length > 0 ? (
           <p className="text-white font-semibold text-lg">
             ⚠️ {overdue.length} item{overdue.length !== 1 ? 's' : ''} need{overdue.length === 1 ? 's' : ''} attention
@@ -174,7 +183,7 @@ export default function DashboardPage() {
         )}
 
         {/* All caught up */}
-        {!loading && overdue.length === 0 && upcoming.length === 0 && (
+        {!loading && !rulesError && overdue.length === 0 && upcoming.length === 0 && (
           <div className="text-center py-10 text-slate-400">
             <p className="text-4xl mb-2">✅</p>
             <p className="font-medium text-slate-600 dark:text-slate-300">All caught up!</p>

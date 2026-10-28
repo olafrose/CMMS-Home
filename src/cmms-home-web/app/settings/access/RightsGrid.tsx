@@ -19,11 +19,20 @@ function sameGrants(a: Set<string>, b: Set<string>) {
 }
 
 /**
- * The Admin column. Anonymous is a system role too, so `isSystem` alone is not enough — the
- * locked cells belong to the real administrator role only.
+ * The Admin column. Anonymous and Label scan are system roles too, so `isSystem` alone is not
+ * enough — the locked cells belong to the real administrator role only.
  */
 function isAdminColumn(role: AccessRole) {
-  return role.isSystem && !role.isAnonymous
+  return role.isSystem && !role.isAnonymous && !role.isLabelScan
+}
+
+/** Why a cell can't be ticked for this role, or null when it can. */
+function notApplicableReason(role: AccessRole, p: PermissionInfo): string | null {
+  if ((role.isAnonymous || role.isLabelScan) && !p.allowedForAnonymous)
+    return `${p.label} needs an account, so it cannot apply to ${role.name}.`
+  if (role.isLabelScan && !p.labelScopable)
+    return `A scanned label covers one item, so it can't grant "${p.label}". Grant it to Anonymous to allow it for everyone.`
+  return null
 }
 
 /**
@@ -203,8 +212,10 @@ export default function RightsGrid({ grid, onDirtyChange }: {
                     </span>
                     <span className="block text-[10px] text-slate-400 dark:text-slate-500">
                       {role.isAnonymous
-                        ? 'not signed in'
-                        : `${role.memberCount} member${role.memberCount === 1 ? '' : 's'}`}
+                        ? 'anyone, everywhere'
+                        : role.isLabelScan
+                          ? 'scanned item only'
+                          : `${role.memberCount} member${role.memberCount === 1 ? '' : 's'}`}
                     </span>
                     {changedByRole[role.id] && (
                       <span className="block text-[10px] text-amber-600 dark:text-amber-400">edited</span>
@@ -277,7 +288,7 @@ export default function RightsGrid({ grid, onDirtyChange }: {
                       </th>
 
                       {grid.roles.map(role => {
-                        const notApplicable = role.isAnonymous && !p.allowedForAnonymous
+                        const notApplicable = notApplicableReason(role, p)
                         const locked = p.alwaysOnForAdmin && isAdminColumn(role)
                         const checked = draft[role.id]?.has(p.key) ?? false
                         const changed = checked !== (baseline[role.id]?.has(p.key) ?? false)
@@ -285,14 +296,17 @@ export default function RightsGrid({ grid, onDirtyChange }: {
                         return (
                           <td
                             key={role.id}
-                            className={`px-2 py-2 text-center border-b border-slate-100 dark:border-slate-700 ${
+                            // relative: the sr-only text inside is absolutely positioned, and
+                            // without a positioned cell it escapes the grid's scroller and
+                            // widens the whole page (the last column showed it first).
+                            className={`relative px-2 py-2 text-center border-b border-slate-100 dark:border-slate-700 ${
                               changed ? 'bg-amber-50 dark:bg-amber-950/40' : ''
                             }`}
                           >
                             {notApplicable ? (
-                              <span title={`${p.label} needs an account, so it cannot apply to ${role.name}.`}>
+                              <span title={notApplicable}>
                                 <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">&mdash;</span>
-                                <span className="sr-only">Not applicable without an account</span>
+                                <span className="sr-only">Not applicable: {notApplicable}</span>
                               </span>
                             ) : locked ? (
                               <span

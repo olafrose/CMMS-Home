@@ -714,6 +714,9 @@ namespace CmmsHome.Api.Migrations
                     b.Property<bool>("IsDefaultForNewUsers")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsLabelScan")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsSystem")
                         .HasColumnType("boolean");
 
@@ -737,6 +740,7 @@ namespace CmmsHome.Api.Migrations
                             Id = new Guid("a0000000-0000-0000-0000-000000000001"),
                             IsAnonymous = false,
                             IsDefaultForNewUsers = false,
+                            IsLabelScan = false,
                             IsSystem = true,
                             Name = "Admin",
                             SortOrder = 1
@@ -746,6 +750,7 @@ namespace CmmsHome.Api.Migrations
                             Id = new Guid("a0000000-0000-0000-0000-000000000002"),
                             IsAnonymous = false,
                             IsDefaultForNewUsers = true,
+                            IsLabelScan = false,
                             IsSystem = false,
                             Name = "Member",
                             SortOrder = 2
@@ -755,6 +760,7 @@ namespace CmmsHome.Api.Migrations
                             Id = new Guid("a0000000-0000-0000-0000-000000000003"),
                             IsAnonymous = false,
                             IsDefaultForNewUsers = false,
+                            IsLabelScan = false,
                             IsSystem = false,
                             Name = "Viewer",
                             SortOrder = 3
@@ -764,9 +770,20 @@ namespace CmmsHome.Api.Migrations
                             Id = new Guid("a0000000-0000-0000-0000-000000000004"),
                             IsAnonymous = true,
                             IsDefaultForNewUsers = false,
+                            IsLabelScan = false,
                             IsSystem = true,
                             Name = "Anonymous",
                             SortOrder = 4
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000000-0000-0000-0000-000000000005"),
+                            IsAnonymous = false,
+                            IsDefaultForNewUsers = false,
+                            IsLabelScan = true,
+                            IsSystem = true,
+                            Name = "Label scan",
+                            SortOrder = 5
                         });
                 });
 
@@ -1235,22 +1252,22 @@ namespace CmmsHome.Api.Migrations
                         },
                         new
                         {
-                            RoleId = new Guid("a0000000-0000-0000-0000-000000000004"),
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000005"),
                             Permission = "equipment.read"
                         },
                         new
                         {
-                            RoleId = new Guid("a0000000-0000-0000-0000-000000000004"),
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000005"),
                             Permission = "events.create"
                         },
                         new
                         {
-                            RoleId = new Guid("a0000000-0000-0000-0000-000000000004"),
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000005"),
                             Permission = "events.read"
                         },
                         new
                         {
-                            RoleId = new Guid("a0000000-0000-0000-0000-000000000004"),
+                            RoleId = new Guid("a0000000-0000-0000-0000-000000000005"),
                             Permission = "rules.read"
                         });
                 });

@@ -18,10 +18,17 @@ expressible, and the admin decides which.
 
 Two things follow from that, and they are the whole architecture:
 
-- **The grid says *what*. The label token says *which*.** An anonymous subject granted
-  "log maintenance" could otherwise log maintenance on anything, and would need to read
-  equipment to do it — handing out the inventory. Instead a scan proves possession of one
-  specific label, and that narrows the grant to that one item.
+- **The grid says *what*. The label token says *which*.** There are two columns for callers
+  without an account. **Anonymous** is what anyone may do, everywhere; it is seeded with
+  nothing. **Label scan** is what holding a scanned label *adds*, on that one item or place
+  only; it is seeded with the quick-log rights. A label holder gets Anonymous's rights unscoped
+  plus Label scan's on the scanned target, so holding a label never leaves anyone with less
+  than not holding one.
+
+  (Until the split there was only Anonymous, and a label merely *narrowed* it. With no cookie at
+  all, Anonymous's quick-log rights applied to every item, so anyone on the network could read
+  the whole history and log against any item without scanning anything. Holding a label was
+  worse than not holding one.)
 - **Authentication is pluggable; authorization is ours.** Credentials live in
   `UserIdentity`, not on `User`, so adding an identity provider later is an insert and a
   callback endpoint rather than a migration of the user table and everything pointing at it.
@@ -32,7 +39,7 @@ Two things follow from that, and they are the whole architecture:
 ```
 User           { Id, Username*, DisplayName?, IsActive, CreatedAt, LastLoginAt? }
 UserIdentity   { Id, UserId, Provider, Subject, PasswordHash?, CreatedAt, LastUsedAt? }
-Role           { Id, Name*, IsSystem, IsAnonymous, IsDefaultForNewUsers, SortOrder }
+Role           { Id, Name*, IsSystem, IsAnonymous, IsLabelScan, IsDefaultForNewUsers, SortOrder }
 UserRole       { UserId, RoleId }
 RolePermission { RoleId, Permission }
 Session        { Id, UserId, TokenHash, UserIdentityId?, CreatedAt, ExpiresAt, LastSeenAt, UserAgent? }
@@ -102,14 +109,25 @@ unguarded surface appears. `Services/EndpointAudit.cs` then makes that visible:
 permission nor an explicit `.Public(...)`. The hole it catches is invisible in review — a new
 route simply works, wide open — so a crash on boot naming the route is a much better outcome.
 
+It reads the routes from the `WebApplication`'s own data sources. For a long time it read the
+`EndpointDataSource` *service* instead, which is empty until routing builds: it checked zero
+routes and passed anything. It now also refuses to run against an empty list, and was
+re-verified by mapping a deliberately unguarded probe route, which fails startup. The same audit
+checks that the catalogue's `LabelScopable` flags match the permissions on `.AllowLabelScope()`
+routes exactly.
+
 Three independent guards stop an admin locking everyone out, because the failure is
 unrecoverable through the UI:
 
 1. The grid renders Admin's `users.manage` / `roles.manage` cells locked.
 2. `PUT /roles/permissions` refuses a payload that strips them, or that grants admin
-   permissions to Anonymous.
-3. `ActorAccessor` adds `Permissions.AdminAlwaysOn` back for system non-anonymous roles
-   whatever the grant rows say.
+   permissions to Anonymous or Label scan.
+3. `ActorAccessor` adds `Permissions.AdminAlwaysOn` back for the Admin role whatever the grant
+   rows say.
+
+The Admin role is recognised by its fixed id (`SeededRoles.Admin`), never by "system and not
+anonymous": that stopped being true once Label scan became a third system role, and would have
+handed it Admin's always-on rights.
 
 Plus `PUT/DELETE /users/{id}` refuses to remove or deactivate the last active administrator.
 Only **people** count toward that: a service account may hold Admin, but it cannot sign in, so
@@ -185,9 +203,16 @@ signed payload, so one kind can't be relabelled as the other). The rest of the r
 token plumbing, and `lib/api.ts` stays free of per-call token handling. The cookie is signed
 rather than stored: nothing to clean up, nothing to leak.
 
-Routes a label scan may reach are marked `.AllowLabelScope()` — a short, reviewable list
-rather than "whatever Anonymous happens to be granted". Everything else refuses a label-scoped
-caller outright. Each of those handlers must call `actor.MayTouchEquipment(id)` — or, for
+A label holder's permissions are Anonymous ∪ Label scan. For each request, the permission filter
+asks where the right being exercised comes from:
+- **From Anonymous:** it applies everywhere, and the label restricts nothing.
+- **Only from Label scan:** it is good for the scanned target alone. Only routes marked
+  `.AllowLabelScope()` (a short, reviewable list) accept it. Everything else refuses it, and on
+  those routes the filter sets `actor.ScopeEnforced`, so the handler's own check bites.
+
+Label scan may only hold permissions flagged `LabelScopable`: those guarding such a route. The
+grid renders the others as not applicable, and `PUT /roles/permissions` refuses them, since
+granting them would be a checkbox that does nothing. Each of those handlers must call `actor.MayTouchEquipment(id)` — or, for
 events and rules, `actor.MayTouchTarget(equipmentId, storageLocationId)` — itself, since the
 filter cannot know whether the id is in the route, the query or the body. `MayTouchTarget`
 requires *both* halves to match the scope, so an item's label cannot reach a place (or the
@@ -297,10 +322,14 @@ not revoke sessions — deactivate the account for that.
 | **Admin** (system) | Everything. Cannot lose `users.manage` / `roles.manage`. |
 | **Member** (default for new users) | Everything day-to-day, including deletes and sensitive documents; not `users.manage`, `roles.manage`, `settings.manage`, `tokens.personal`, `api.docs` or `events.delete`. |
 | **Viewer** | Read-only: view and browse equipment, history, schedules, storage, parts, documents, categories, links, settings. Not sensitive documents. |
-| **Anonymous** (system) | `equipment.read`, `events.read`, `events.create`, `rules.read` — exactly enough to scan a label, log maintenance and see the result. No browsing. |
+| **Anonymous** (system) | Nothing. Whatever is granted here applies to anyone who can reach the app, on everything. |
+| **Label scan** (system) | `equipment.read`, `events.read`, `events.create`, `rules.read`, on the scanned item or place only. Exactly enough to log maintenance and see the result. |
 
-Anonymous's grants are the default posture: the quick-log survives an upgrade, nothing else
-does. Widen or close it from `/settings/access`.
+Neither has members. Both are edited from `/settings/access`.
+
+**Upgrading from before the split** (migration `SplitLabelScanRole`): Label scan is created with
+the four quick-log rights. Anonymous is emptied **only if it still held exactly the old seeded
+four**. An Anonymous an admin had changed is left exactly as it was.
 
 ## Endpoint → permission map
 

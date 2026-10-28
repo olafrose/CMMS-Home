@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { optional } from '@/lib/load'
 import { useAuth } from '@/components/AuthProvider'
 import EntityCombobox from '@/components/EntityCombobox'
 import EquipmentMultiSelect from '@/components/EquipmentMultiSelect'
@@ -41,7 +42,9 @@ export default function PartDetailPage() {
   const [adjusting, setAdjusting] = useState(false)
 
   useEffect(() => {
-    Promise.all([api.parts.get(id), api.partUsages.list(id), api.equipment.list(), api.partCategories.list(), api.storageLocations.list()])
+    // Only the part is required; the lookups behind the edit form may be refused.
+    Promise.all([api.parts.get(id), optional(api.partUsages.list(id), []), optional(api.equipment.list(), []),
+      optional(api.partCategories.list(), []), optional(api.storageLocations.list(), [])])
       .then(([p, u, eq, cats, locs]) => {
         setPart(p); setUsages(u); setEquipment(eq); setPartCategories(cats); setLocations(locs)
         setName(p.name); setUnit(p.unit)

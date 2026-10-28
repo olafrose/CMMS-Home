@@ -14,9 +14,15 @@ public static class EndpointAudit
 {
     public static void AuditPermissionCoverage(this WebApplication app)
     {
-        var unguarded = app.Services
-            .GetRequiredService<EndpointDataSource>()
-            .Endpoints
+        // The app's own data sources, NOT the EndpointDataSource service: that composite is
+        // only populated once routing builds, so at startup it is empty — and for a long time
+        // this audit read it, checked zero routes, and passed whatever was mapped. Reading
+        // the WebApplication's sources sees every route mapped above it in Program.cs.
+        var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(d => d.Endpoints).ToList();
+        if (endpoints.Count == 0)
+            throw new InvalidOperationException("Permission audit found no endpoints; it must run after mapping them.");
+
+        var unguarded = endpoints
             .OfType<RouteEndpoint>()
             .Where(e => e.Metadata.GetMetadata<RequiredPermissionMetadata>() is null)
             .Where(e => e.Metadata.GetMetadata<PublicEndpointMetadata>() is null)
@@ -31,6 +37,21 @@ public static class EndpointAudit
                 + Environment.NewLine + string.Join(Environment.NewLine, unguarded.Select(u => "  " + u))
                 + Environment.NewLine
                 + "Add .RequirePermission(Permissions.X), or .Public(\"why\") if it genuinely must be open.");
+
+        // The catalogue's LabelScopable flags must match the routes: a scopable permission
+        // guarding no .AllowLabelScope() route would be a Label scan checkbox that does
+        // nothing, and a label-reachable route whose permission isn't flagged couldn't be
+        // granted to Label scan at all.
+        var labelRoutes = endpoints
+            .Where(e => e.Metadata.GetMetadata<LabelScopeAllowedMetadata>() is not null)
+            .Select(e => e.Metadata.GetMetadata<RequiredPermissionMetadata>()?.Permission)
+            .OfType<string>()
+            .ToHashSet();
+        if (!labelRoutes.SetEquals(Permissions.LabelScopableKeys))
+            throw new InvalidOperationException(
+                "Permissions marked LabelScopable must be exactly those guarding .AllowLabelScope() routes. "
+                + $"Routes: {string.Join(", ", labelRoutes.Order())}. "
+                + $"Catalogue: {string.Join(", ", Permissions.LabelScopableKeys.Order())}.");
 
         // Also verify every granted key still exists in the catalogue, so a permission
         // removed in code cannot linger as a grant row that grants nothing while looking

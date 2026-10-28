@@ -42,6 +42,7 @@ public static class RoleEndpoints
                     description = p.Description,
                     allowedForAnonymous = p.AllowedForAnonymous,
                     alwaysOnForAdmin = p.AlwaysOnForAdmin,
+                    labelScopable = p.LabelScopable,
                 }),
                 roles = roles.Select(r => new
                 {
@@ -49,6 +50,7 @@ public static class RoleEndpoints
                     r.Name,
                     r.IsSystem,
                     r.IsAnonymous,
+                    r.IsLabelScan,
                     r.IsDefaultForNewUsers,
                     r.SortOrder,
                     memberCount = memberCounts.FirstOrDefault(m => m.RoleId == r.Id)?.Count ?? 0,
@@ -161,13 +163,19 @@ public static class RoleEndpoints
                 // The Admin role keeps the permissions that administer the app, and the
                 // Anonymous role can never hold them. Enforced here as well as in the UI:
                 // the grid's locked cells are a courtesy, this is the actual rule.
-                if (role.IsSystem && !role.IsAnonymous && !Permissions.AdminAlwaysOn.All(requested.Contains))
+                if (role.Id == SeededRoles.Admin && !Permissions.AdminAlwaysOn.All(requested.Contains))
                     errors[$"grants.{role.Id}"] =
                         ["The Admin role cannot give up managing users and roles — that is the way back in."];
 
-                if (role.IsAnonymous && requested.Any(Permissions.AnonymousForbidden.Contains))
+                if ((role.IsAnonymous || role.IsLabelScan) && requested.Any(Permissions.AnonymousForbidden.Contains))
                     errors[$"grants.{role.Id}"] =
-                        ["Anonymous cannot be given administrative permissions."];
+                        [$"{role.Name} cannot be given administrative permissions."];
+
+                // Only the routes a scan may reach accept a label-scoped caller, so anything
+                // else on Label scan would be a checkbox that does nothing.
+                if (role.IsLabelScan && requested.FirstOrDefault(p => !Permissions.LabelScopableKeys.Contains(p)) is { } unusable)
+                    errors[$"grants.{role.Id}"] =
+                        [$"A scanned label covers one item, so it cannot grant \"{unusable}\". Grant it to Anonymous instead."];
             }
 
             if (errors.Count > 0) return Results.ValidationProblem(errors);

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { loadErrorMessage, optional } from '@/lib/load'
 import { formatLocationPath } from '@/lib/storage'
 import type { AppSettings, Equipment, StorageLocation } from '@/lib/types'
 
@@ -100,13 +101,16 @@ export default function ToolsPage() {
   const [locations, setLocations] = useState<StorageLocation[]>([])
   const [settings, setSettings] = useState<AppSettings>()
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [activeAsset, setActiveAsset] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([api.equipment.list({ kind: 'tool' }), api.storageLocations.list(), api.appSettings.get()])
+    // Only the list itself is required; the tree and settings just shape breadcrumbs.
+    Promise.all([api.equipment.list({ kind: 'tool' }), optional(api.storageLocations.list(), []), optional(api.appSettings.get(), undefined)])
       .then(([t, places, s]) => { setTools(t); setLocations(places); setSettings(s) })
+      .catch((e) => setLoadError(loadErrorMessage(e, 'the tools')))
       .finally(() => setLoading(false))
   }, [])
 
@@ -198,8 +202,9 @@ export default function ToolsPage() {
       )}
 
       {loading && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}
+      {loadError && <p className="text-sm text-red-500">{loadError}</p>}
 
-      {!loading && tools.length === 0 && (
+      {!loading && !loadError && tools.length === 0 && (
         <div className="text-center py-16 text-slate-400">
           <p className="text-4xl mb-3">🛠️</p>
           <p className="font-medium">No tools yet</p>

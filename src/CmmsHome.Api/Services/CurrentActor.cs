@@ -28,6 +28,17 @@ public class CurrentActor
 
     public IReadOnlySet<string> Permissions { get; init; } = new HashSet<string>();
 
+    // For a label holder: the part of Permissions that applies everywhere — Anonymous's own
+    // grants. Anything in Permissions but not here came from the Label scan role and only
+    // reaches the scanned target. Null for everyone else, whose permissions are all unscoped.
+    public IReadOnlySet<string>? UnscopedPermissions { get; init; }
+
+    // Set by the permission filter when the permission this request exercises came only
+    // from the label, so the handler's MayTouch* check has to bite. A label that merely
+    // tags along with rights Anonymous already holds restricts nothing: holding a label must
+    // never leave someone with less than not holding one.
+    public bool ScopeEnforced { get; set; }
+
     // Set when the caller arrived by scanning a printed label rather than signing in. The
     // grid says *what* an anonymous subject may do; this says *which* item they may do it
     // to. Both must agree, which is what stops a single label becoming a key to everything.
@@ -47,13 +58,13 @@ public class CurrentActor
     // A label scan may only ever touch the one item its token was signed for. Signed-in
     // users are unscoped and may touch whatever their permissions allow.
     public bool MayTouchEquipment(Guid equipmentId) =>
-        !IsLabelScoped || ScopedEquipmentId == equipmentId;
+        !ScopeEnforced || ScopedEquipmentId == equipmentId;
 
     // The same, for anything that targets either an item or a place (events, rules). Both
     // halves must match, so an item's label can't reach a place and vice versa — and passing
     // two nulls (an unfiltered list) is refused for a scoped caller.
     public bool MayTouchTarget(Guid? equipmentId, Guid? storageLocationId) =>
-        !IsLabelScoped || (equipmentId == ScopedEquipmentId && storageLocationId == ScopedStorageLocationId);
+        !ScopeEnforced || (equipmentId == ScopedEquipmentId && storageLocationId == ScopedStorageLocationId);
 
     public static readonly CurrentActor None = new();
 
@@ -122,15 +133,30 @@ public class ActorAccessor(IHttpContextAccessor http, CmmsDbContext db, LabelSig
             }
         }
 
-        // Not signed in: the Anonymous role, optionally narrowed to one target by a label token.
+        // Not signed in: the Anonymous role everywhere, plus — with a valid label — the Label
+        // scan role on that one target.
         var scope = await labels.TryReadLabelSessionAsync(ctx.Request.Cookies[AuthCookies.LabelSession]);
         var anonRoleId = await db.Roles.Where(r => r.IsAnonymous).Select(r => r.Id).SingleOrDefaultAsync();
+        var anonymous = anonRoleId == Guid.Empty
+            ? new HashSet<string>()
+            : await PermissionsForRolesAsync([anonRoleId]);
+
+        IReadOnlySet<string> permissions = anonymous;
+        if (scope is not null)
+        {
+            var labelRoleId = await db.Roles.Where(r => r.IsLabelScan).Select(r => r.Id).SingleOrDefaultAsync();
+            if (labelRoleId != Guid.Empty)
+            {
+                var union = anonymous.ToHashSet();
+                union.UnionWith(await PermissionsForRolesAsync([labelRoleId]));
+                permissions = union;
+            }
+        }
 
         return _resolved = new CurrentActor
         {
-            Permissions = anonRoleId == Guid.Empty
-                ? new HashSet<string>()
-                : await PermissionsForRolesAsync([anonRoleId]),
+            Permissions = permissions,
+            UnscopedPermissions = scope is null ? null : anonymous,
             ScopedEquipmentId = scope is { Kind: LabelTargetKind.Equipment } ? scope.Value.Id : null,
             ScopedStorageLocationId = scope is { Kind: LabelTargetKind.StorageLocation } ? scope.Value.Id : null,
             SetupRequired = setupRequired,
@@ -241,7 +267,7 @@ public class ActorAccessor(IHttpContextAccessor http, CmmsDbContext db, LabelSig
         // grant rows happen to say. Belt to the braces of the write-side guard and the
         // locked cells in the grid: three ways to fail to lock yourself out of a NAS whose
         // only door is this app.
-        if (await db.Roles.AnyAsync(r => ids.Contains(r.Id) && r.IsSystem && !r.IsAnonymous))
+        if (ids.Contains(SeededRoles.Admin))
             foreach (var p in Permissions.AdminAlwaysOn) set.Add(p);
 
         // Held permissions are always a subset of the catalogue: a key left behind by a

@@ -85,7 +85,8 @@ public static class Permissions
     public static readonly IReadOnlyList<PermissionInfo> All =
     [
         new(EquipmentRead, GroupEquipment, "View one item",
-            "Open a single item by its id — the scanned-label case."),
+            "Open a single item by its id — the scanned-label case.",
+            LabelScopable: true),
         new(EquipmentList, GroupEquipment, "Browse and search",
             "List and filter the whole inventory."),
         new(EquipmentWrite, GroupEquipment, "Create and edit",
@@ -96,9 +97,11 @@ public static class Permissions
             "Check items out to a borrower and take them back."),
 
         new(EventsRead, GroupEvents, "View history",
-            "See logged maintenance, repairs and cleaning."),
+            "See logged maintenance, repairs and cleaning.",
+            LabelScopable: true),
         new(EventsCreate, GroupEvents, "Log maintenance",
-            "Record a new event. This is the quick-log QR flow."),
+            "Record a new event. This is the quick-log QR flow.",
+            LabelScopable: true),
         new(EventsEdit, GroupEvents, "Edit history",
             "Change or annotate events already logged."),
         new(EventsDelete, GroupEvents, "Delete history entries",
@@ -107,7 +110,8 @@ public static class Permissions
             AllowedForAnonymous: false),
 
         new(RulesRead, GroupRules, "View schedules",
-            "See maintenance schedules and what is due."),
+            "See maintenance schedules and what is due.",
+            LabelScopable: true),
         new(RulesWrite, GroupRules, "Create and edit",
             "Add schedules and change their intervals or due dates."),
         new(RulesDelete, GroupRules, "Delete",
@@ -202,6 +206,9 @@ public static class Permissions
 
     // Permissions that make no sense for a subject with no account, so the grid renders
     // them as not-applicable and the API refuses to grant them.
+    public static readonly IReadOnlySet<string> LabelScopableKeys =
+        All.Where(p => p.LabelScopable).Select(p => p.Key).ToHashSet();
+
     public static readonly IReadOnlySet<string> AnonymousForbidden =
         All.Where(p => !p.AllowedForAnonymous).Select(p => p.Key).ToHashSet();
 }
@@ -212,4 +219,7 @@ public record PermissionInfo(
     string Label,
     string Description,
     bool AllowedForAnonymous = true,
-    bool AlwaysOnForAdmin = false);
+    bool AlwaysOnForAdmin = false,
+    // Guards at least one .AllowLabelScope() route, so the Label scan role may hold it.
+    // EndpointAudit fails startup if this and the routes disagree.
+    bool LabelScopable = false);

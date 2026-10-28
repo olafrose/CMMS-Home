@@ -197,10 +197,7 @@ public static class UserEndpoints
     private static async Task<IResult?> WouldStrandAdminAsync(
         CmmsDbContext db, User user, List<Guid> newRoleIds, bool isActive)
     {
-        var adminRoleIds = await db.Roles
-            .Where(r => r.IsSystem && !r.IsAnonymous)
-            .Select(r => r.Id)
-            .ToListAsync();
+        List<Guid> adminRoleIds = [SeededRoles.Admin];
 
         var keepsAdmin = user.Kind == UserKind.Service || isActive && newRoleIds.Any(adminRoleIds.Contains);
         if (keepsAdmin) return null;
@@ -233,7 +230,7 @@ public static class UserEndpoints
         if (ids.Count == 0) return [];
 
         return await db.Roles
-            .Where(r => ids.Contains(r.Id) && !r.IsAnonymous)
+            .Where(r => ids.Contains(r.Id) && !r.IsAnonymous && !r.IsLabelScan)
             .Select(r => r.Id)
             .ToListAsync();
     }

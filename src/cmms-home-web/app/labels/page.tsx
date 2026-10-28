@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { loadErrorMessage, optional } from '@/lib/load'
 import type { AppSettings, Equipment, StorageLocation } from '@/lib/types'
 import { locationPath, formatLocationPath, DEFAULT_LOCATION_ICON } from '@/lib/storage'
 import PrintLabel, { type QrPosition, type LabelAlign } from '@/components/PrintLabel'
@@ -75,6 +76,7 @@ export default function LabelsPage() {
   const [labelTokens, setLabelTokens] = useState<Record<string, string>>({})
   const [placeTokens, setPlaceTokens] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [origin, setOrigin] = useState('')
   const [onlyKey, setOnlyKey] = useState<string | null>(null)
 
@@ -119,8 +121,8 @@ export default function LabelsPage() {
   useEffect(() => {
     Promise.all([
       api.equipment.list(),
-      api.storageLocations.list(),
-      api.appSettings.get(),
+      optional(api.storageLocations.list(), []),
+      optional(api.appSettings.get(), undefined),
       // The signed per-item tokens the QR codes carry. Not fatal if refused — a label
       // without one still works for anyone signed in, which beats printing nothing.
       api.auth.labelTokens().catch(() => ({} as Record<string, string>)),
@@ -129,6 +131,7 @@ export default function LabelsPage() {
       .then(([eq, p, s, t, pt]) => {
         setEquipment(eq); setPlaces(p); setSettings(s); setLabelTokens(t); setPlaceTokens(pt)
       })
+      .catch((e) => setLoadError(loadErrorMessage(e, 'the items to label')))
       .finally(() => setLoading(false))
   }, [])
 
@@ -330,6 +333,7 @@ export default function LabelsPage() {
         </div>
 
         {loading && <p className="text-slate-500 dark:text-slate-400 text-sm">Loading…</p>}
+        {loadError && <p className="text-sm text-red-500">{loadError}</p>}
 
         {/* Format + layout */}
         {!loading && (
